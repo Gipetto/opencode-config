@@ -1,0 +1,65 @@
+{
+  "$schema": "https:\/\/opencode.ai\/config.json",
+  "model": "mtplx\/mtplx-qwen38-27b-optimized-quality",
+  "plugin": [
+    "./mtplx-session-headers.js"
+  ],
+  "provider": {
+    "mtplx": {
+      "models": {
+        "mtplx-qwen38-27b-optimized-quality": {
+          "limit": {
+            "context": 262144,
+            "output": 262144
+          },
+          "modalities": {
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "name": "MTPLX mtplx-qwen38-27b-optimized-quality",
+          "options": {
+            "reasoningEffort": "low"
+          },
+          "reasoning": true,
+          "temperature": true,
+          "tool_call": true,
+          "variants": {
+            "high": {
+              "disabled": true
+            },
+            "low": {
+              "reasoningEffort": "low"
+            },
+            "medium": {
+              "reasoningEffort": "medium"
+            },
+            "minimal": {
+              "disabled": true
+            },
+            "none": {
+              "disabled": true
+            },
+            "xhigh": {
+              "reasoningEffort": "xhigh"
+            }
+          }
+        }
+      },
+      "name": "MTPLX (local)",
+      "npm": "@ai-sdk\/openai-compatible",
+      "options": {
+        "baseURL": "http:\/\/127.0.0.1:8000\/v1",
+        "chunkTimeout": 900000,
+        "headers": {
+          "x-mtplx-client": "opencode"
+        },
+        "timeout": false
+      }
+    }
+  },
+  "small_model": "mtplx\/mtplx-qwen38-27b-optimized-quality"
+}

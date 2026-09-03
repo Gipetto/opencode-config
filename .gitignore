@@ -1,0 +1,21 @@
+package.json
+package-lock.json
+node_modules/
+.bun/
+.DS_Store
+*.log
+
+# Personal machine configuration and credentials
+opencode.local.json
+opencode.*.local.json
+.env
+.env.*
+!.env.example
+
+# Local credentials, kept beside this configuration but never committed.
+secrets/*
+!secrets/.gitkeep
+
+# Local recovery artifacts
+opencode.json.bak-*
+opencode.json.invalid-*.bak
