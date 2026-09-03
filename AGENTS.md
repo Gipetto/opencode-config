@@ -46,6 +46,8 @@ brevity.
 - Do not summarize what you just did, repeat back files you read, or quote code
   before modifying it — show the result.
 - When referencing prior context, use minimal identification, not full quotes.
+- Chunk file writes in to smaller batches as larger writes tend to fail with
+  the local AI server.
 
 ## Code
 
