@@ -3,7 +3,7 @@
   "compaction": {
     "auto": true,
     "preserve_recent_tokens": 8192,
-    "prune": true,
+    "prune": false,
     "reserved": 10000
   },
   "lsp": true,

@@ -40,9 +40,7 @@ brevity.
 
 ## Agentic behavior
 
-- Prefer editing files directly over explaining changes.
 - Use search tools before asking clarifying questions.
-- Do not ask for permission before taking obvious next steps.
 - Do not summarize what you just did, repeat back files you read, or quote code
   before modifying it — show the result.
 - When referencing prior context, use minimal identification, not full quotes.
@@ -99,6 +97,10 @@ Kindex is your durable memory layer, reached through the `kindex` MCP server. Do
 not wait for the user to mention it. "Session" means one continuous agent run,
 not one user message, question, or tool call.
 
+**Scope:** the tag lifecycle and all writes below apply to the orchestrator and
+plan agents only. Subagents may `search` and read, but must not start, resume,
+segment, or end tags, and must not create nodes, links, or tasks.
+
 Classify the work first; the classification governs the whole lifecycle.
 
 **Trivial** — follow-ups, clarifications, corrections, status or yes/no
@@ -149,6 +151,9 @@ rediscovery — not a duplicate of the source.
 
 ## GitNexus
 
+**Scope:** `query`, `context`, and `impact` are available to any agent that looks
+up code. `detect_changes` and index refresh are for the orchestrator only.
+
 Use GitNexus only at decision points:
 
 - Unfamiliar code: `query` first; `context` only when a specific symbol needs
@@ -176,13 +181,14 @@ Scope each worker to finish without compacting:
   plus an explicit list of what you did not cover. Never continue past a second
   compaction — the task was mis-scoped, and continuing is the most expensive
   thing you can do.
-- Return under ~500 tokens: findings, `path/to/file.ts:line` references, and
+- Respect the report cap in your own agent definition. Where none is given,
+  return under ~500 tokens: findings, `path/to/file.ts:line` references, and
   what you did not cover. Never return file contents, transcripts, or raw
   command output; the orchestrator can re-read anything by path.
 
-While orchestrating, do not investigate. No greps, no file reads, no MCP lookups
-beyond dispatch and synthesis. Your context must stay flat; if it grows, the
-workers were mis-scoped.
+While orchestrating, do not investigate. Kindex and GitNexus lookups are allowed
+— they are how you orient. No greps, no file reads. Your context must stay flat;
+if it grows, the workers were mis-scoped.
 
 Hand off through files and return values, not Kindex. A path in a return value
 costs one call; the same handoff through Kindex costs several writes plus
