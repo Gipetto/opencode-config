@@ -4,7 +4,17 @@ mode: subagent
 model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
 permission:
   edit: allow
-  bash: deny
+  bash:
+    "*": deny
+    "cd*": allow
+    "tsc*": allow
+    "npm run typecheck*": allow
+    "npm run check*": allow
+    "yarn typecheck*": allow
+    "git status*": allow
+    "git diff*": allow
+    "git rm*": allow
+    "git log*": allow
   postgres*: deny
   sentry*: deny
 ---
@@ -28,6 +38,13 @@ Don't add comments explaining your change.
 If an exact-string edit fails twice, rewrite the smallest enclosing function or
 block rather than retrying the match. Do not rewrite the whole file; large
 writes fail against the local server.
+
+Shell access is limited to a typecheck, `git status`, `git diff`, and `git rm`.
+A passing typecheck means your edit is well-formed. It does not mean the change
+is correct. Never run tests, never report PASS, and never claim the change
+works. Compound commands joined by `;` or `&&` are blocked; run one at a time.
+
+Only delete a file the brief names explicitly, and use `git rm`.
 
 Report back: files touched, one line per change, and anything you couldn't do.
 No diffs, no file contents. Don't claim the change is correct. Verification is
