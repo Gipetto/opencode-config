@@ -4,7 +4,8 @@
     "auto": true,
     "preserve_recent_tokens": 8192,
     "prune": false,
-    "reserved": 10000
+    "reserved": 10000,
+    "tail_turns": 6
   },
   "lsp": true,
   "mcp": {
@@ -120,6 +121,16 @@
           "options": {},
           "variants": {}
         },
+        "Qwen3.8-27B-MLX-6bit-32k": {
+          "limit": {
+            "context": 32000,
+            "output": 4096
+          },
+          "name": "Qwen 3.8 27B Q6 32k context (omlx)",
+          "id": "Qwen3.8-27B-MLX-6bit-32k",
+          "options": {},
+          "variants": {}
+        },
         "Qwen3.8-27B-MLX-4bit": {
           "limit": {
             "context": 150000,
@@ -134,6 +145,24 @@
             "output": 4096
           },
           "name": "Qwen 3.6 35B A3B MoE (omlx)",
+          "options": {}
+        },
+        "Qwen3.6-35B-A3B-MLX-mixed-4bit-32k": {
+          "limit": {
+            "context": 32000,
+            "output": 4096
+          },
+          "name": "Qwen 3.6 35B A3B MoE 32k context (omlx)",
+          "id": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
+          "options": {}
+        },
+        "Qwen3.6-35B-A3B-MLX-mixed-4bit-64k": {
+          "limit": {
+            "context": 64000,
+            "output": 4096
+          },
+          "name": "Qwen 3.6 35B A3B MoE 64k context (omlx)",
+          "id": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
           "options": {}
         }
       },

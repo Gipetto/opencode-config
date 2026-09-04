@@ -2,6 +2,7 @@
 description: Primary planning agent. Analyzes the codebase and proposes a plan of changes without editing.
 mode: primary
 model: omlx/Qwen3.8-27B-MLX-6bit
+steps: 20
 permission:
   edit: deny
   bash:

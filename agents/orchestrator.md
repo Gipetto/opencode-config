@@ -2,6 +2,7 @@
 description: Primary orchestrator. Breaks work into steps, delegates to subagents, and gathers context via kindex and gitnexus. Read-only itself.
 mode: primary
 model: omlx/Qwen3.8-27B-MLX-6bit
+steps: 40
 permission:
   edit: deny
   write: deny
