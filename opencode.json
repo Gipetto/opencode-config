@@ -4,7 +4,7 @@
     "auto": true,
     "preserve_recent_tokens": 8192,
     "prune": false,
-    "reserved": 10000,
+    "reserved": 6000,
     "tail_turns": 6
   },
   "lsp": true,

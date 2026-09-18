@@ -1,7 +1,7 @@
 ---
 description: Reviews a change for accuracy against the brief after checks have passed. Final gate.
 mode: subagent
-model: omlx/Qwen3.8-27B-MLX-6bit-32k
+model: omlx/Qwen3.8-27B-MLX-6bit
 steps: 8
 permission:
   edit: deny

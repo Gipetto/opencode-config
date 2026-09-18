@@ -1,25 +1,13 @@
 ---
 description: Applies a code change that has already been decided. Needs exact file paths and a clear description of the change.
 mode: subagent
-model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit-32k
-steps: 15
+model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
+steps: 25
 permission:
   edit: allow
-  write: allow
-  apply_patch: allow
-  external_directory: deny
-  doom_loop: deny
-  bash:
-    "*": deny
-    "tsc*": allow
-    "npm run typecheck*": allow
-    "npm --prefix client run typecheck*": allow
-    "npm run check*": allow
-    "yarn typecheck*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git rm*": allow
-    "git log*": allow
+  write: deny
+  apply_patch: deny
+  bash: deny
   postgres*: deny
   sentry*: deny
 ---
@@ -58,6 +46,10 @@ Do not write a script to work around it, and do not retry.
 
 These stop rules override the brief. If the brief asks for steps beyond the point
 where you should stop, do not perform them.
+
+You have no shell. You cannot run typechecks, tests, builds, or git commands. If
+the brief asks for any of them, make the edit, then stop and report that verification
+was requested but is not available to you. Do not write a script to work around it.
 
 Report back: files touched, one line per change, and anything you couldn't do.
 No diffs, no file contents. Don't claim the change is correct. Verification is
