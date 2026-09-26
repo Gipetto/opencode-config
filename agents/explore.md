@@ -1,7 +1,8 @@
 ---
 description: Read-only search of the codebase. Finds files, functions, and call sites. Reports what it found, never edits.
 mode: subagent
-model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
+#model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
 steps: 12
 permission:
   edit: deny

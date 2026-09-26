@@ -164,6 +164,13 @@
           "name": "Qwen 3.6 35B A3B MoE 64k context (omlx)",
           "id": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
           "options": {}
+        },
+        "Qwen3.8-Flash-Next-oQ4e-mtp": {
+          "limit": {
+            "context": 150000,
+            "output": 16384
+          },
+          "options": {}
         }
       },
       "name": "OMLX (Local)",
@@ -186,13 +193,13 @@
       ".gitnexus/**"
     ]
   },
-  "model": "omlx/Qwen3.8-27B-MLX-6bit",
-  "small_model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit",
+  // "model": "omlx/Qwen3.8-27B-MLX-6bit",
+  // "small_model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit",
   "default_agent": "orchestrator",
   "subagent_depth": 1,
   "agent": {
-    "compaction": {
-      "model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit"
-    }
+    // "compaction": {
+    //   "model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit"
+    // }
   }
 }

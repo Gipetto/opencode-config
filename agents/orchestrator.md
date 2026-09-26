@@ -1,7 +1,8 @@
 ---
 description: Primary orchestrator. Breaks work into steps, delegates to subagents, and gathers context via kindex and gitnexus. Read-only itself.
 mode: primary
-model: omlx/Qwen3.8-27B-MLX-6bit
+# model: omlx/Qwen3.8-27B-MLX-6bit
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
 steps: 40
 permission:
   edit: deny
@@ -37,3 +38,7 @@ review to check the change against the brief. Review's verdict is final.
 
 Be terse. No preamble, no restating the plan, no narrating what you are about to
 do. Your output is the slowest part of this loop.
+
+Dispatch a single agent at a time. You are running on limited hardware and the
+best performance is achieved running threaded.
+

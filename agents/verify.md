@@ -1,7 +1,8 @@
 ---
 description: Runs tests, builds, and linters for a change and reports pass or fail with the specific failures.
 mode: subagent
-model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
+# model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
 steps: 20
 permission:
   edit: deny
