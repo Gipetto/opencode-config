@@ -19,3 +19,5 @@ secrets/*
 # Local recovery artifacts
 opencode.json.bak-*
 opencode.json.invalid-*.bak
+skills/ask-jeremy/
+skills/security-audit
