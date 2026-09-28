@@ -21,6 +21,8 @@ Describe the problem, motivation, or constraint that makes the change necessary.
 
 Make both sections specific to the change. Do not use placeholders or restate the same sentence in both sections. Preserve useful existing PR content outside these sections.
 
+When ACCEPTANCE.md (or `acceptance/*.md`) exists on disk, include a `## Acceptance criteria` section in the PR body copied verbatim from it. ACCEPTANCE.md is a working artifact and must never be committed.
+
 Before reporting a PR-description operation complete, read the live body and verify that both headings and their content are present.
 
 Use plain language to describe the changes, but don't obscure any necessary detail behind simplified language. Use plain language, then expand on the idea with more technical details if necessary.

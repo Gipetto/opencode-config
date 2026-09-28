@@ -89,10 +89,14 @@ Terse still applies at the human interface — plain, not long.
 
 Non-trivial work gets ACCEPTANCE.md ratified before implementation. Implement
 writes ACCEPTANCE.md verbatim from the brief's "Acceptance criteria:" block as
-its first action. Verify runs the criteria's commands. Review judges the diff
-against ACCEPTANCE.md, not the implementer's summary. When plan is invoked
-directly, its output hands back to the orchestrator flow before anything
-executes.
+its first action. ACCEPTANCE.md is a working artifact: never stage or commit
+it — keep it out of git via `.git/info/exclude` or the user's global gitignore,
+never by editing the repo's .gitignore. Verify runs the criteria's commands.
+Review reads it from disk while untracked and judges the diff against it, not
+the implementer's summary. At PR-creation time its content is copied verbatim
+into the PR description under `## Acceptance criteria`, and the file is deleted
+only after the PR opens. When plan is invoked directly, its output hands back
+to the orchestrator flow before anything executes.
 
 ## Repository workflow
 
@@ -224,6 +228,6 @@ findings, multi-step state) goes to Kindex nodes once, pulled by ID via
 `kindex_show`; never make a worker hunt for it. Small ephemeral detail (under
 ~1k tokens, single consumer) stays inline — text beats a write-plus-read. The
 acceptance contract itself is always a file (`ACCEPTANCE.md`), never a node:
-contracts travel with the diff and must not be mutable after ratification.
+contracts travel with the PR description and must not be mutable after ratification.
 Node pointers in briefs must be freshly verified this session; a stale node
 misleads silently.

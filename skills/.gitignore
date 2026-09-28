@@ -1,6 +1,2 @@
 # Ignore auto-added plugins
 gitnexus-*
-merge
-open-pr
-rebase
-worktree
