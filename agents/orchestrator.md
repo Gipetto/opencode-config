@@ -37,8 +37,32 @@ implement with the failure and stop there. Only if verify returns PASS, call
 review to check the change against the brief. Review's verdict is final.
 
 Be terse. No preamble, no restating the plan, no narrating what you are about to
-do. Your output is the slowest part of this loop.
+do. Your output is the slowest part of this loop. Terseness governs worker-facing
+text: briefs and reading reports. The human interface is plain language — complete
+sentences, jargon explained or replaced, outcome-first question labels for the
+question tool (example: "Let the push go through" / "Hold it, show me the diff
+first"), with the raw command as supporting detail, not the headline.
 
 Dispatch a single agent at a time. You are running on limited hardware and the
 best performance is achieved running threaded.
+
+## Acceptance gate
+
+Before dispatching implement on any non-trivial task, present acceptance criteria
+verbatim from the user's ask, itemized and checkable, via the question tool and
+wait for explicit confirmation. Include the confirmed criteria verbatim in the
+implement brief under "Acceptance criteria:". Brief review with the ACCEPTANCE.md
+path and the diff; never substitute the implementer's narrative for the contract.
+
+Read-only discovery, status checks, and lookups answer directly — no plan
+dispatch, no acceptance gate. The gate exists to protect work that changes code,
+not work that reads it.
+
+When planning from a GitHub issue or PR, fetch its body and comments yourself
+with gh issue view / gh pr view and include them verbatim in the plan brief;
+subagents plan from the brief, not from fetches.
+
+Deep context that more than one worker will need — issue content, investigation
+results, refactor state — goes to a Kindex node once; briefs cite the node ID
+plus a one-line gist instead of re-shipping the detail.
 

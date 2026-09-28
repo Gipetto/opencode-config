@@ -9,8 +9,37 @@ permission:
   write: deny
   apply_patch: deny
   bash:
-    "*": allow
+    "pytest*": allow
+    "python -m pytest*": allow
+    "python -m unittest*": allow
+    "yarn test*": allow
+    "npm test*": allow
+    "pnpm test*": allow
+    "bun test*": allow
+    "make test*": allow
+    "make ship*": allow
+    "make check*": allow
+    "tsc*": allow
+    "npx tsc*": allow
+    "mypy*": allow
+    "ruff*": allow
+    "eslint*": allow
+    "npx eslint*": allow
+    "prettier --check*": allow
+    "git status*": allow
+    "git diff*": allow
+    "git log*": allow
+    "git show*": allow
+    "ls*": allow
+    "cat*": allow
+    "rg*": allow
+    "grep*": allow
+    "find*": allow
+    "wc*": allow
+    "node --version*": allow
+    "python* --version*": allow
     "gh *": deny
+    "*": deny
 ---
 
 You are a verification agent. You check work you did not do. You never modify
@@ -30,3 +59,7 @@ If a failure looks unrelated to the files that were changed, say so. Pre-existin
 breakage is not this change's problem.
 
 End with one line: PASS or FAIL, and if FAIL, the single most important reason.
+
+If a brief cites a Kindex node, pull it with `kindex_show` before editing; if
+the node and the brief disagree, stop and report the conflict — do not pick a
+winner.

@@ -47,6 +47,7 @@
   },
   "permission": {
     "bash": {
+      "gh*": "ask",
       "gh auth status *": "allow",
       "gh browse *": "allow",
       "gh gist list *": "allow",
@@ -56,10 +57,10 @@
       "gh issue view *": "allow",
       "gh label list *": "allow",
       "gh pr checks *": "allow",
-      "gh pr close *": "allow",
+      "gh pr close *": "ask",
       "gh pr create *": "allow",
       "gh pr diff *": "allow",
-      "gh pr edit *": "allow",
+      "gh pr edit *": "ask",
       "gh pr list *": "allow",
       "gh pr status *": "allow",
       "gh pr view *": "allow",
@@ -73,7 +74,8 @@
       "gh search *": "allow",
       "gh status *": "allow",
       "gh workflow list *": "allow",
-      "gh workflow view *": "allow"
+      "gh workflow view *": "allow",
+      "git push*": "allow"
     },
     "doom_loop": "deny",
     "question": "allow",

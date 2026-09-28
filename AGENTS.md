@@ -69,10 +69,30 @@ brevity.
   coverage or to exercise mocks.
 - Before resolving or replying to GitHub review threads, re-read live thread
   state, timestamps, and target IDs.
-- Include a "what" and a "why" in every PR description.
+- Include a "what" and a "why" in every PR description. The pr-description-what-why skill owns the full convention.
 - **HARD CONSTRAINT**: Unless the current message explicitly requests a draft,
   create/open/publish/ship means ready for review. Verify the live draft flag is
   false and publish accidental drafts immediately.
+
+## Communication registers
+
+Two registers. Internal handoffs — briefs to subagents, subagent reports, tool
+narration — stay telegraphic: fragments, jargon, no filler. Human-facing output —
+final answers, question-tool prompts, approval requests — is plain language:
+complete sentences, no unexplained abbreviations, technical detail included but
+framed by what it does. Example pair: "Seatbelt projection" internally vs "the
+sandbox that keeps the coder from touching your git history" to the user.
+
+Terse still applies at the human interface — plain, not long.
+
+## Acceptance contract
+
+Non-trivial work gets ACCEPTANCE.md ratified before implementation. Implement
+writes ACCEPTANCE.md verbatim from the brief's "Acceptance criteria:" block as
+its first action. Verify runs the criteria's commands. Review judges the diff
+against ACCEPTANCE.md, not the implementer's summary. When plan is invoked
+directly, its output hands back to the orchestrator flow before anything
+executes.
 
 ## Repository workflow
 
@@ -81,6 +101,8 @@ brevity.
 - Rebase only when it matters, not merely to update a branch with no shared-file
   risk.
 - If told there are merge conflicts, fix them, commit, and push.
+- Never add `Co-Authored-By` or other trailer lines to commit messages. The
+  commit skill owns the full convention.
 
 ## Shell commands
 
@@ -195,6 +217,13 @@ While orchestrating, do not investigate. Kindex and GitNexus lookups are allowed
 — they are how you orient. No greps, no file reads. Your context must stay flat;
 if it grows, the workers were mis-scoped.
 
-Hand off through files and return values, not Kindex. A path in a return value
-costs one call; the same handoff through Kindex costs several writes plus
-several reads.
+**Handoffs: pointers, depth in Kindex.** Briefs and return values carry the
+contract: goal, exact file paths, acceptance criteria, and — when depth exists —
+a Kindex node ID with a one-line gist. Deep context (issue bodies, investigation
+findings, multi-step state) goes to Kindex nodes once, pulled by ID via
+`kindex_show`; never make a worker hunt for it. Small ephemeral detail (under
+~1k tokens, single consumer) stays inline — text beats a write-plus-read. The
+acceptance contract itself is always a file (`ACCEPTANCE.md`), never a node:
+contracts travel with the diff and must not be mutable after ratification.
+Node pointers in briefs must be freshly verified this session; a stale node
+misleads silently.
