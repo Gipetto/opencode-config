@@ -121,6 +121,9 @@ to the orchestrator flow before anything executes.
 - Keep large or user-facing payloads out of shell arguments and heredocs; pass
   them over stdin or a temporary file. For clipboard writes, start `pbcopy` with
   no embedded text and send content over stdin.
+- Stage temporary files under `$TMPDIR/opencode/` (macOS per-user temp area at
+  `/var/folders/**/T/`); never write staging files to `/tmp`. Never delete
+  recursively outside `$TMPDIR`.
 
 ## Kindex
 
