@@ -8,7 +8,22 @@ permission:
   edit: allow
   write: allow
   apply_patch: deny
-  bash: deny
+  bash:
+    "*": deny
+    "npm run *": "allow"
+    "npm test*": "allow"
+    "npm *": "allow"
+    "npx *": "allow"
+    "yarn *": "allow"
+    "pnpm *": "allow"
+    "make *": "allow"
+    "tsc*": "allow"
+    "node *": "allow"
+    "vitest*": "allow"
+    "svelte-check*": "allow"
+    "git status*": "allow"
+    "git diff*": "allow"
+    "git log*": "allow"
   postgres*: deny
   sentry*: deny
 ---

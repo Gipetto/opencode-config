@@ -9,6 +9,7 @@ permission:
   write: deny
   apply_patch: deny
   bash:
+    "*": deny
     "pytest*": allow
     "python -m pytest*": allow
     "python -m unittest*": allow
@@ -39,7 +40,15 @@ permission:
     "node --version*": allow
     "python* --version*": allow
     "gh *": deny
-    "*": deny
+    "npm run *": "allow"
+    "npm *": "allow"
+    "npx *": "allow"
+    "yarn *": "allow"
+    "pnpm *": "allow"
+    "make *": "allow"
+    "node *": "allow"
+    "vitest*": "allow"
+    "svelte-check*": "allow"
 ---
 
 You are a verification agent. You check work you did not do. You never modify

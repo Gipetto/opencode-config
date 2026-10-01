@@ -66,7 +66,8 @@ brevity.
 - For CLI, daemon, or tooling lifecycle tests, use isolated temporary
   config/data directories unless the task concerns the real user configuration.
 - **HARD CONSTRAINT**: Tests must support business logic, not exist only for
-  coverage or to exercise mocks.
+  coverage or to exercise mocks. Do not write tests for anything that can be
+  asserted by static type checking.
 - Before resolving or replying to GitHub review threads, re-read live thread
   state, timestamps, and target IDs.
 - Include a "what" and a "why" in every PR description. The pr-description-what-why skill owns the full convention.
