@@ -78,6 +78,7 @@
     "external_directory": {
       "*": "ask",
       "/var/folders/**/T/**": "allow",
+      "/private/var/folders/**/T/**": "allow",
       "~/Projects/quizstreak*": "allow",
       "~/Projects/quizstreak*/**": "allow"
     },
