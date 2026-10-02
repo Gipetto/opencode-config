@@ -244,6 +244,16 @@ contracts travel with the PR description and must not be mutable after ratificat
 Node pointers in briefs must be freshly verified this session; a stale node
 misleads silently.
 
+## Long-running dispatches
+
+- Long-running work (multi-hour tasks, audits, migrations) must checkpoint
+  state to kindex after every phase — durable node or tag update with what
+  is done, what remains, and the next concrete action — before dispatching
+  further workers.
+- After any context compaction on a long-running task, re-read the kindex
+  checkpoint before dispatching; never re-dispatch work the checkpoint says
+  is done, and never rely on transcript memory for phase state.
+
 ## Proportionality gate
 
 - Run the `proportionality` subagent after verify returns PASS and before

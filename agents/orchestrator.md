@@ -3,7 +3,10 @@ description: Primary orchestrator. Breaks work into steps, delegates to subagent
 mode: primary
 # model: omlx/Qwen3.8-27B-MLX-6bit
 model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
-steps: 40
+# steps ceiling is runaway-protection only: workers are individually capped
+# (~150 tool calls) and doom_loop detection catches repetition, so the
+# orchestrator's own step count must not throttle long multi-phase dispatches.
+steps: 500
 permission:
   edit: deny
   write: deny
