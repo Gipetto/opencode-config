@@ -65,7 +65,7 @@ Pass — `test/format.test.ts:44` asserts exact output of the real formatter aga
 
 ### R4 Copy-paste growth
 
-Rule: Near-duplicate logic introduced by this diff must be consolidated or justified — copies genuinely diverge in behavior, not formatting.
+Rule: Near-duplicate logic introduced by this diff must be consolidated or justified — copies genuinely diverge in behavior, not formatting. Named constants are judged under R7, not the R4 near-duplicate threshold.
 Evidence required: Point at both blocks and state where their behavior diverges, or show consolidation was declined without cause.
 Calibrate:
 Block — `validateOrder` and `validateInvoice` are identical except variable names.
@@ -86,6 +86,14 @@ Evidence required: for every new multi-line block, search for existing functions
 Calibrate:
 Block — new `getMe` remote doing inline `safeGetSession()` + null-check + `.user.sub` when `requireUserRemote` (authz.ts) already returns the verified user or throws → required action: call `requireUserRemote`, keep only the profile/leaderboard fetches.
 Pass — a new fetch for a data source the existing helper was never responsible for → cite the distinct contract.
+
+### R7 Constant single home
+
+Rule: a named constant introduced or touched by the diff whose value and domain identity duplicate an existing module-scoped constant must resolve to one shared import. A constant is a claim that there is one decision; two definitions fork the source of truth silently — both suites stay green while someone edits only one copy.
+Evidence required: name-and-value collision confirmed by grep across both modules (file:line for each definition); if the surrounding code paths are parallel, that justifies parallel machinery, not parallel domain values.
+Calibrate:
+Block — `INCORRECT_COMPLETION_CREDIT = 0.5` declared in both the nightly and live ranking modules with no shared home → required action: single home with one import at each site, or distinct names plus a written reason if the values may legitimately diverge.
+Pass — a test file pinning the literal `37.5` for the formula's expected result: literals are the stronger duplication in tests; reusing the production constant in its own assertion would make it tautological under R3.
 
 ## Notes-only (never blocks)
 

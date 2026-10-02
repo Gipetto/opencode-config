@@ -24,7 +24,7 @@ subagents.
 | implement | subagent | Applies a decided change to the exact files named in its brief. | 25 | edit/write allow, patch deny; bash deny; postgres and sentry deny |
 | verify | subagent | Runs tests, builds, and linters named in the brief; reports PASS/FAIL. Never fixes anything. | 20 | edit/write deny; bash allowlist (pytest, make test/ship/check, tsc, mypy, ruff, eslint, prettier --check, read-only git) with `gh *` deny and everything else deny |
 | explore | subagent | Read-only codebase search via kindex, gitnexus, then grep. Returns path:line findings. | 12 | edit/write/bash deny; kindex and gitnexus allow |
-| proportionality | subagent | Proportionality gate: judges a verified diff against ticket/ACCEPTANCE.md for size, shape, and test quality; rules R1–R6 with confidence routing (BLOCK=high only, CLARIFY halts to the human); never edits. | uncapped | edit/write deny; bash git diff/log/show allow with sha-verification rule; everything else deny; temperature 0.2 for judgment consistency |
+| proportionality | subagent | Proportionality gate: judges a verified diff against ticket/ACCEPTANCE.md for size, shape, and test quality; rules R1–R7; constant single-home (R7) with confidence routing (BLOCK=high only, CLARIFY halts to the human); never edits. | uncapped | edit/write deny; bash git diff/log/show allow with sha-verification rule; everything else deny; temperature 0.2 for judgment consistency |
 | review | subagent | Final gate: judges the diff against the brief and ACCEPTANCE.md, spot-checks claims. | 12 | edit/write deny; bash read-only allowlist (git diff/show/log/status, grep, rg, head, tail, wc, sort, uniq) |
 
 ## Workflow
