@@ -33,6 +33,7 @@ Hard rules:
 - Only decision-relevant ambiguity clarifies: if being wrong would not change the verdict, it is a note.
 - CLARIFICATION caps at 3 items per run, strongest first; extras downgrade to medium-confidence notes.
 - The parent session may not answer CLARIFICATION items itself: each goes verbatim to the human, and the gate is re-dispatched with the answer in the brief.
+- A cited commit sha is high-confidence only if the run executed `git show --no-patch --oneline <sha>` and confirmed the subject matches the claim. An unconfirmed sha citation caps that item at medium; a confirmed-mismatch sha is a factual error and must be corrected in the report before it ships.
 
 ## Blocking rules
 
@@ -103,6 +104,8 @@ Style and structure preferences without a cost argument. Refactors exceeding tic
 Use `git diff` and `git show` for the diff. Use GitNexus impact/context MCP tools to count callers of newly added symbols. Use grep only as absence confirmation. Scope all queries to the diff plus callers of new symbols — no repo-wide sweeps. For each new multi-line block added by the diff, run a targeted reuse search (graph candidates + grep on domain verbs) before ruling; scope searches to the operation the block performs — no repo-wide semantic sweeps.
 
 ## Output contract
+
+Every section of the schema is mandatory in every report, including when empty. An empty section is filled with an explicit nothing-to-report line stating why (e.g. "None — every hunk mapped to a criterion"; "None — no clarification needed, all required evidence was read verbatim this run"). An omitted section is a report-structure defect, indistinguishable from a skipped rule, and is treated as such.
 
 ```
 ## Verdict: PASS | BLOCK | CLARIFY | PASS_WITH_NOTES
