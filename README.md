@@ -19,12 +19,12 @@ subagents.
 
 | Agent | Mode | Role | Steps | Permission posture |
 | --- | --- | --- | --- | --- |
-| orchestrator | primary | Plans, delegates, gathers context. Never edits files; dispatches one subagent at a time. | 40 | edit/write/patch deny; kindex and gitnexus allow |
+| orchestrator | primary | Plans, delegates, gathers context. Never edits files; dispatches one subagent at a time. | 500 | edit/write/patch deny; kindex and gitnexus allow |
 | plan | primary | Analyzes the codebase and proposes a stepwise plan with draft acceptance criteria. | 20 | edit deny; bash deny-by-default with read-only allowlist (git log/diff/show/status, grep, rg, head, tail, wc) |
 | implement | subagent | Applies a decided change to the exact files named in its brief. | 25 | edit/write allow, patch deny; bash deny; postgres and sentry deny |
 | verify | subagent | Runs tests, builds, and linters named in the brief; reports PASS/FAIL. Never fixes anything. | 20 | edit/write deny; bash allowlist (pytest, make test/ship/check, tsc, mypy, ruff, eslint, prettier --check, read-only git) with `gh *` deny and everything else deny |
 | explore | subagent | Read-only codebase search via kindex, gitnexus, then grep. Returns path:line findings. | 12 | edit/write/bash deny; kindex and gitnexus allow |
-| proportionality | subagent | Proportionality gate: judges a verified diff against ticket/ACCEPTANCE.md for size, shape, and test quality; rules R1–R6 with confidence routing (BLOCK=high only, CLARIFY halts to the human); never edits. | 12 | edit/write deny; bash git diff/log/show allow with sha-verification rule; everything else deny |
+| proportionality | subagent | Proportionality gate: judges a verified diff against ticket/ACCEPTANCE.md for size, shape, and test quality; rules R1–R6 with confidence routing (BLOCK=high only, CLARIFY halts to the human); never edits. | uncapped | edit/write deny; bash git diff/log/show allow with sha-verification rule; everything else deny; temperature 0.2 for judgment consistency |
 | review | subagent | Final gate: judges the diff against the brief and ACCEPTANCE.md, spot-checks claims. | 12 | edit/write deny; bash read-only allowlist (git diff/show/log/status, grep, rg, head, tail, wc, sort, uniq) |
 
 ## Workflow
@@ -61,7 +61,7 @@ subagents.
 
 `plugins/kindex-compaction.js` is active: it integrates kindex with context
 compaction, reading `../kindex/opencode.yaml` and talking to the local omlx
-server. Auto-compaction is on, preserving an 8k-token recent window.
+server. Auto-compaction is on, preserving the last 6 turns (compaction.tail_turns).
 
 ## Permissions
 
@@ -69,7 +69,11 @@ Top-level `gh` reads (view, list, diff, checks, runs, searches) are allowed;
 gh mutations (`gh pr create/edit/close`) and everything else matching `gh*`
 require approval, as does `git push`. Secrets live in `secrets/` and are
 referenced with `{file:}` interpolation; the directory is gitignored and its
-contents are never printed.
+contents are never printed. Repetition protection is native and strict:
+doom_loop (same tool call 3x with identical input) is denied, not prompted, so
+unattended runs block spinners instead of stalling on approvals—while
+paraphrase-level thrashing remains guarded only by worker step budgets and the
+kindex checkpoint discipline.
 
 ## Skills
 
