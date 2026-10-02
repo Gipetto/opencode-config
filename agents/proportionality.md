@@ -59,13 +59,13 @@ Calibrate: block: `lodash` for `_.get`; pass: ticket names date-fns.
 
 ### R6 Existing-function reuse
 Rule: a new inline gate, transform, or fetch of what an existing exported helper already does must call the helper or cite a concrete behavioral reason it cannot. New code does not reinvent existing homes.
-Evidence: per new multi-line block, search domain verbs (`requireUser`, `safeGetSession`, `getSession`) and the graph; cite the candidate file:line and diff its behavior.
-Calibrate: block: `getMe` inlines `safeGetSession()` null-checks when `requireUserRemote` already returns the user or throws → call it, keep profile fetches; pass: a source the helper never covered — cite the distinct contract.
+Evidence: per new multi-line block, search domain verbs (`requireUser`, `getSession`, `requireAuth`) and the graph; cite the candidate file:line and diff its behavior.
+Calibrate: block: new `getProfile` endpoint inlines session null-checks when `requireUser` already returns the user or throws → call it, keep the profile fetch; pass: a source the helper never covered — cite the distinct contract.
 
 ### R7 Constant single home
 Rule: a new or touched named constant duplicating an existing module-scoped constant's value and domain identity resolves to one shared import, or distinct names with a written reason if values may legitimately diverge. A constant is a claim that there is one decision; two definitions fork the source of truth silently — both suites stay green while someone edits one copy. Parallel code paths justify parallel machinery, never parallel domain decisions.
 Evidence: grep-confirmed name-and-value collision, file:line per definition.
-Calibrate: block: `INCORRECT_COMPLETION_CREDIT = 0.5` in both nightly and live ranking modules; pass: a test pinning literal `37.5` — literals are stronger in tests; a production constant reused in its own assertion is R3-tautological.
+Calibrate: block: `TAX_RATE = 0.08` declared in both the billing and invoicing modules; pass: a test pinning the literal `8.99` — literals are stronger in tests; a production constant reused in its own assertion is R3-tautological.
 
 ## Notes-only
 
