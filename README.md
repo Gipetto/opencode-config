@@ -3,8 +3,9 @@
 A local-first OpenCode configuration. All models run on omlx, a local MLX
 inference server (`http://127.0.0.1:8000/v1`); no cloud model providers are
 in active use. The setup drives a multi-agent workflow: an orchestrator
-delegates to planning, implementation, verification, and review agents, and
-the user ratifies acceptance criteria and approves anything destructive.
+delegates to planning, implementation, verification, proportionality, and
+review agents, and the user ratifies acceptance criteria and approves anything
+destructive.
 
 ## Models
 
@@ -23,6 +24,7 @@ subagents.
 | implement | subagent | Applies a decided change to the exact files named in its brief. | 25 | edit/write allow, patch deny; bash deny; postgres and sentry deny |
 | verify | subagent | Runs tests, builds, and linters named in the brief; reports PASS/FAIL. Never fixes anything. | 20 | edit/write deny; bash allowlist (pytest, make test/ship/check, tsc, mypy, ruff, eslint, prettier --check, read-only git) with `gh *` deny and everything else deny |
 | explore | subagent | Read-only codebase search via kindex, gitnexus, then grep. Returns path:line findings. | 12 | edit/write/bash deny; kindex and gitnexus allow |
+| proportionality | subagent | Proportionality gate: judges a verified diff against ticket/ACCEPTANCE.md for size, shape, and test quality; rules R1–R6 with confidence routing (BLOCK=high only, CLARIFY halts to the human); never edits. | 12 | edit/write deny; bash git diff/log/show allow with sha-verification rule; everything else deny |
 | review | subagent | Final gate: judges the diff against the brief and ACCEPTANCE.md, spot-checks claims. | 12 | edit/write deny; bash read-only allowlist (git diff/show/log/status, grep, rg, head, tail, wc, sort, uniq) |
 
 ## Workflow
@@ -36,9 +38,13 @@ subagents.
    ACCEPTANCE.md first, verbatim, before any other edit.
 5. verify runs the acceptance commands within its allowlist and ends with
    PASS or FAIL. FAIL sends the work back to implement.
-6. review judges the diff against ACCEPTANCE.md — never the implementer's
+6. proportionality runs after verify PASS on diffs above ~150 lines or
+   introducing new abstractions. BLOCK routes its items verbatim back to
+   implement (max two cycles); CLARIFY surfaces its questions verbatim to
+   the user and re-dispatches with the answers. The report goes to review.
+7. review judges the diff against ACCEPTANCE.md — never the implementer's
    summary — and its verdict is final.
-7. Commit and push are gated by user approval: `git push` and gh mutations
+8. Commit and push are gated by user approval: `git push` and gh mutations
    prompt.
 
 ## MCP servers
