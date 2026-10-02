@@ -243,3 +243,21 @@ acceptance contract itself is always a file (`ACCEPTANCE.md`), never a node:
 contracts travel with the PR description and must not be mutable after ratification.
 Node pointers in briefs must be freshly verified this session; a stale node
 misleads silently.
+
+## Proportionality gate
+
+- Run the `proportionality` subagent after verify returns PASS and before
+  review, on diffs exceeding ~150 changed lines or introducing any new
+  interface, abstraction, wrapper, generic, or config knob. Skip trivial diffs.
+- Feed it the diff, the ticket text, and the ACCEPTANCE.md path in the brief;
+  never bake ticket content into the agent definition.
+- BLOCK verdict: route its BLOCK items verbatim back to implement as the exact
+  brief, then rerun verify, then re-run proportionality on the delta only.
+- Max two BLOCK cycles; after that, escalate the disagreement by handing the
+  proportionality report to review (or a human) to arbitrate.
+- Review receives the proportionality report with the diff so it does not
+  re-litigate the same ground.
+- CLARIFY verdict: never answer the gate's clarification items yourself —
+  surface each verbatim to the user, then re-dispatch the gate with the answer
+  in the brief. Clarification round-trips do not count toward the two BLOCK
+  cycles.
