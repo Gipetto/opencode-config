@@ -113,6 +113,7 @@ to the orchestrator flow before anything executes.
 - If told there are merge conflicts, fix them, commit, and push.
 - Never add `Co-Authored-By` or other trailer lines to commit messages. The
   commit skill owns the full convention.
+- Do not stack pull requests unless you are asked to.
 
 ## Shell commands
 
