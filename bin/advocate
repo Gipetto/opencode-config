@@ -17,9 +17,12 @@ export OPENAI_BASE_URL="http://127.0.0.1:8000/v1"
 export OPENAI_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
 export ANTHROPIC_BASE_URL="http://127.0.0.1:8000"
 export ANTHROPIC_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
-export ADVOCATE_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"
-export ADVOCATE_ANTHROPIC_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"
-export ADVOCATE_OPENAI_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"
+# export ADVOCATE_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"  # revisit when a second resident model fits (Qwen 4 dense)
+export ADVOCATE_MODEL="Qwen3.8-Flash-Next-oQ4e-mtp"
+# export ADVOCATE_ANTHROPIC_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"  # revisit when a second resident model fits (Qwen 4 dense)
+export ADVOCATE_ANTHROPIC_MODEL="Qwen3.8-Flash-Next-oQ4e-mtp"
+# export ADVOCATE_OPENAI_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"  # revisit when a second resident model fits (Qwen 4 dense)
+export ADVOCATE_OPENAI_MODEL="Qwen3.8-Flash-Next-oQ4e-mtp"
 
 OUT="$(nix build --no-link --print-out-paths "$REPO#advocate")"
 exec "$OUT/bin/advocate" "$@"

@@ -17,8 +17,10 @@ export OPENAI_BASE_URL="http://127.0.0.1:8000/v1"
 export OPENAI_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
 export ANTHROPIC_BASE_URL="http://127.0.0.1:8000"
 export ANTHROPIC_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
-export SIMULACRUM_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"
-export GENERALIST_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"
+# export SIMULACRUM_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"  # revisit when a second resident model fits (Qwen 4 dense)
+export SIMULACRUM_MODEL="Qwen3.8-Flash-Next-oQ4e-mtp"
+# export GENERALIST_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"  # revisit when a second resident model fits (Qwen 4 dense)
+export GENERALIST_MODEL="Qwen3.8-Flash-Next-oQ4e-mtp"
 
 OUT="$(nix build --no-link --print-out-paths "$REPO#sim")"
 exec "$OUT/bin/sim" "$@"
