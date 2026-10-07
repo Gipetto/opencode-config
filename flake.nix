@@ -24,6 +24,7 @@
             url = "https://github.com/abhigyanpatwari/GitNexus.git";
             rev = "aeb3b0e439020ebf83c92529cb5088b8c9682517"; # tag v1.6.10-rc.211 (dereferenced to its commit)
             hash = "sha256-K53EYpxi5cyfV9DPYkqeVThIBz0yGvBv7/e/0XSrvow=";
+            name = "GitNexus"; # stable basename for sourceRoot; fetch output must stay ./GitNexus
           };
 
           sourceRoot = "GitNexus/gitnexus";
@@ -339,15 +340,21 @@
             platforms = pkgs.lib.platforms.all;
           };
         };
-      in
-      {
-        packages = {
+        perSystemPackages = {
           # One derivation provides both kin and kin-mcp.
           kindex = kindex-pkg;
           kindex-mcp = kindex-pkg;
           gitnexus = gitnexus;
           inherit sim advocate meditate pact;
           inherit signet-eval;
+        };
+      in
+      {
+        packages = perSystemPackages // {
+          everything = pkgs.releaseTools.aggregate {
+            name = "agent-tooling";
+            constituents = builtins.attrValues perSystemPackages;
+          };
         };
       });
 }

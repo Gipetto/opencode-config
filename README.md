@@ -168,3 +168,10 @@ To refresh a pin:
 Then rebuild (`nix build '.#<pkg>'`) and re-run `./install.sh`. All fetches
 — flake inputs and the in-derivation GitNexus recipe alike — go over public
 HTTPS; none requires SSH access.
+
+## Makefile
+
+`Makefile` is a thin convenience layer over the flake with no package list of
+its own — it derives the package names from the flake at parse time. On a
+fresh machine, `make init` checks, pre-warms, and links (`install.sh`). After
+any flake or pin change, `make update` bumps inputs and pre-warms builds.
