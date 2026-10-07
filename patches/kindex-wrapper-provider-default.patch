@@ -1,0 +1,18 @@
+diff --git a/src/kindex/config.py b/src/kindex/config.py
+index 3db352f..820ee91 100644
+--- a/src/kindex/config.py
++++ b/src/kindex/config.py
+@@ -251,0 +252,3 @@
++_DEFAULT_LLM_PROVIDER = os.environ.get("LOCAL_LLM_PROVIDER", "anthropic")
++
++
+@@ -255 +258 @@ class EmbeddingConfig(BaseModel):
+-    provider: str = "voyage"     # "voyage", "openai", "gemini", "local"
++    provider: str = "openai" if _DEFAULT_LLM_PROVIDER == "openai" else "voyage"
+@@ -270,3 +273,3 @@ class LLMConfig(BaseModel):
+-    provider: str = "anthropic"
+-    model: str = "claude-haiku-4-5-20251001"
+-    api_key_env: str = "ANTHROPIC_API_KEY"
++    provider: str = _DEFAULT_LLM_PROVIDER
++    model: str = "gpt-5.4-nano" if _DEFAULT_LLM_PROVIDER == "openai" else "claude-haiku-4-5-20251001"
++    api_key_env: str = "OPENAI_API_KEY" if _DEFAULT_LLM_PROVIDER == "openai" else "ANTHROPIC_API_KEY"

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# managed by opencode-config, install with ./install.sh from the repo root
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+REPO="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+# routes through local oMLX (OpenAI and Anthropic wire formats)
+export OPENAI_BASE_URL="http://127.0.0.1:8000/v1"
+export OPENAI_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
+export ANTHROPIC_BASE_URL="http://127.0.0.1:8000"
+export ANTHROPIC_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
+export SIMULACRUM_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"
+export GENERALIST_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"
+
+OUT="$(nix build --no-link --print-out-paths "$REPO#sim")"
+exec "$OUT/bin/sim" "$@"

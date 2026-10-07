@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# managed by opencode-config, install with ./install.sh from the repo root
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+REPO="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+OUT="$(nix build --no-link --print-out-paths "$REPO#kindex")"
+exec "$OUT/bin/kin" "$@"
