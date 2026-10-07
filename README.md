@@ -93,3 +93,78 @@ rules, shell conventions, and how agents use kindex and GitNexus.
 
 This directory is a git repository (Gipetto/opencode-config). Changes are
 committed deliberately, not automatically.
+
+## Vendored tooling
+
+This repo is a Nix flake that vendors the agent tooling. Layout:
+
+- `flake.nix` — pins and builds all eight packages: `kindex` (bin `kin`),
+  `kindex-mcp` (same derivation, bin `kin-mcp`), `gitnexus`, `sim`,
+  `advocate`, `meditate`, `pact`, `signet-eval`.
+- `patches/` — patches applied to vendored builds (e.g. the kindex
+  provider-default wrapper patch).
+- `bin/` — one launcher script per command. Each launcher resolves its own
+  real path (so it works via a `~/.local/bin` symlink), builds from this
+  repo's flake (`nix build --no-link --print-out-paths "$REPO#<pkg>"`), and
+  execs the binary.
+- `install.sh` — symlinks the eight launchers into `~/.local/bin`.
+  Idempotent; safe to re-run.
+
+`patches/kindex-wrapper-provider-default.patch` repoints kindex's config
+defaults at a local endpoint: in `src/kindex/config.py` it adds
+`_DEFAULT_LLM_PROVIDER = os.environ.get("LOCAL_LLM_PROVIDER", "anthropic")`
+just above the config classes and makes `LLMConfig`'s `provider`, `model`,
+and `api_key_env` defaults (plus `EmbeddingConfig`'s `provider`) derive from
+it, so `LOCAL_LLM_PROVIDER=openai` switches kindex's defaults to
+OpenAI-compatible routing. If the patch fails to apply after a kindex bump,
+re-derive it: unpack the kindex source at the new rev (e.g. clone
+`github.com/wandercom/kindex` at the pinned `rev`), re-apply those same
+edits in the `LLMConfig`/`EmbeddingConfig` defaults region of
+`src/kindex/config.py`, then regenerate with
+`git diff > patches/kindex-wrapper-provider-default.patch`.
+
+`sim` and `advocate` route through the local oMLX server at
+`http://127.0.0.1:8000/v1`, authenticating with `secrets/omlx-api-key`
+(git-ignored). kindex deliberately stays unpatched for local routing: kindex
+0.46.0 hardcodes `api.openai.com` in `llm.py`, so an env-var base URL has no
+effect there — a `LOCAL_LLM_BASE_URL` patch is tracked as deferred.
+
+`~/.local/bin` must be on `PATH`: `opencode.json` launches `kin-mcp` and
+`gitnexus` as bare commands, so they must resolve through those symlinks.
+`nix` must also be on `PATH` (every launcher calls `nix build`); on this
+machine it lives at `/nix/var/nix/profiles/default/bin`, not
+`~/.nix-profile/bin`.
+
+On a fresh machine:
+
+```sh
+git clone <this repo> ~/.config/opencode
+~/.config/opencode/install.sh
+```
+
+Make sure `~/.local/bin` is on `PATH` in your shell profile, then verify
+with `kin --version` and `gitnexus --version` outside any devshell.
+
+To uninstall, remove the eight symlinks:
+`rm ~/.local/bin/{kin,kin-mcp,gitnexus,sim,advocate,meditate,pact,signet-eval}`.
+
+To refresh a pin:
+
+- Real flake inputs (`kindex`, `nixpkgs`, `flake-utils`): run
+  `nix flake update <input>` (or bare `nix flake update` for all), which
+  rewrites `flake.lock` itself.
+- GitNexus is not a flake input: it is fetched via `fetchgit` inside its
+  derivation in `flake.nix:23-27`. Resolve the commit SHA for the desired
+  upstream tag at `https://github.com/abhigyanpatwari/GitNexus` with
+  `git ls-remote https://github.com/abhigyanpatwari/GitNexus refs/tags/<tag>`
+  (for annotated tags, use the `refs/tags/<tag>^{}` line), update the
+  `rev` (`flake.nix:25`), then rebuild with `nix build '.#gitnexus'`: the
+  build reports the new source hash to paste into `hash` (`flake.nix:26`),
+  or compute it up front with `nix-prefetch-git`. If upstream's dependency
+  lockfile changed, refresh `npmDepsHash` (`flake.nix:31`) the same way —
+  the `buildNpmPackage` error names the exact command to run
+  (`prefetch-npm-deps <unpacked-source>`).
+
+Then rebuild (`nix build '.#<pkg>'`) and re-run `./install.sh`. All fetches
+— flake inputs and the in-derivation GitNexus recipe alike — go over public
+HTTPS; none requires SSH access.
