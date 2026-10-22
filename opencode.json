@@ -9,6 +9,13 @@
   },
   "lsp": true,
   "mcp": {
+    "safari-mcp": {
+      "command": [
+        "/usr/bin/safaridriver",
+        "--mcp"
+      ],
+      "type": "local"
+    },
     "gitnexus": {
       "command": [
         "gitnexus",
@@ -80,7 +87,11 @@
       "/var/folders/**/T/**": "allow",
       "/private/var/folders/**/T/**": "allow",
       "~/Projects/quizstreak*": "allow",
-      "~/Projects/quizstreak*/**": "allow"
+      "~/Projects/quizstreak*/**": "allow",
+      "~/.config/opencode/skills/**/references/*": "allow",
+      "~/.config/opencode/skills/**/references/**": "allow",
+      "~/.agents/skills/**/references/*": "allow",
+      "~/.agents/skills/**/references/**": "allow"
     },
     "question": "allow",
     "skill": "allow",
