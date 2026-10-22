@@ -261,10 +261,23 @@ misleads silently.
   interface, abstraction, wrapper, generic, or config knob. Skip trivial diffs.
 - Feed it the diff, the ticket text, and the ACCEPTANCE.md path in the brief;
   never bake ticket content into the agent definition.
+- Every gate dispatch brief carries an explicit `cycle: N` — N is 1 for the
+  first gate run in a workstream, incremented on each re-dispatch after a
+  BLOCK or CLARIFY.
 - BLOCK verdict: route its BLOCK items verbatim back to implement as the exact
   brief, then rerun verify, then re-run proportionality on the delta only.
-- Max two BLOCK cycles; after that, escalate the disagreement by handing the
-  proportionality report to review (or a human) to arbitrate.
+- Max two BLOCK cycles: on the second BLOCK, the next dispatch is to review
+  with all gate reports attached, never a third gate run; review arbitrates
+  the disagreement.
+- After each gate verdict, the orchestrator records one dated line in a kindex
+  node for the workstream (create a concept node tagged `proportionality` on
+  first gate run; edit/append thereafter): `<date> cycle-N <VERDICT>
+  <one-line items> @<short HEAD sha>`.
+- Remediation commit messages reference the gate cycle in the body (e.g.
+  "Gate cycle 2: consolidate auth guards"), never as trailer lines.
+- When dispatching the gate, the brief includes the Accepted-justifications
+  lines from prior gate runs in the workstream (read from the kindex gate
+  node).
 - Review receives the proportionality report with the diff so it does not
   re-litigate the same ground.
 - CLARIFY verdict: never answer the gate's clarification items yourself —

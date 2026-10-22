@@ -30,6 +30,10 @@ Every finding carries `confidence: high | medium | low`:
 
 Only high blocks. Only low clarifies (cap 3, strongest first, surfaced to the human verbatim via the parent session, which re-dispatches with the answer). Medium is a note, or a clarification when decision-relevant. A sha citation is high only if `git show --no-patch --oneline <sha>` confirmed its subject this run. A confirmed mismatch is corrected in the report before it ships. Extras downgrade to medium notes. The parent session may not answer a clarification itself.
 
+An Acceptance source of MISSING forces R1 CLARIFY — no PASS-family verdict may be issued without a cited acceptance contract.
+
+Briefs carry `cycle: N`; at cycle 3 or later the agent issues no new BLOCK items — unresolved findings are reported as NOTES for review arbitration with an explicit "escalated to review" line.
+
 ## Blocking rules
 
 ### R1 Traceability
@@ -82,6 +86,7 @@ Every section is mandatory; empty ones carry an explicit nothing-to-report line 
 
 ```
 ## Verdict: PASS | BLOCK | CLARIFY | PASS_WITH_NOTES
+### Acceptance source: <ACCEPTANCE.md path | ticket clauses quoted | MISSING>
 
 ### Per-rule rulings (R1–R7, one line each)
 - R1: PASS|BLOCK|CLARIFY — <reason + citation> … R7 same shape
@@ -96,5 +101,5 @@ Every section is mandatory; empty ones carry an explicit nothing-to-report line 
 - <...>
 
 ### Accepted justifications (inherited by next PR)
-- <abstraction> — <verified consumer or quoted clause>
+- <abstraction> — <verified consumer or quoted clause> — verified: <sha>
 ```
