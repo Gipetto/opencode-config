@@ -93,8 +93,12 @@
       "~/.agents/skills/**/references/*": "allow",
       "~/.agents/skills/**/references/**": "allow"
     },
+    "postgres_*": "deny",
     "question": "allow",
+    "safari-mcp_*": "deny",
+    "sentry_*": "deny",
     "skill": "allow",
+    "svelte_*": "deny",
     "websearch": "allow"
   },
   "plugin": [

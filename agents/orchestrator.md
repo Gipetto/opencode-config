@@ -13,6 +13,9 @@ permission:
   apply_patch: deny
   kindex*: allow
   gitnexus*: allow
+  sentry*: allow
+  postgres*: allow
+  safari-mcp*: allow
 ---
 
 You are the orchestrator. You plan and delegate. You never edit files. You have

@@ -26,6 +26,7 @@ permission:
     "git log*": "allow"
   postgres*: deny
   sentry*: deny
+  svelte*: allow
 ---
 
 You are an implementation agent. You apply a change that has already been
