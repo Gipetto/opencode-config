@@ -15,6 +15,23 @@ that specific thing instead of varying the call at random.
 > argument), this file says so rather than guessing. Fill that in from the tool schema
 > (see "Open items" at the bottom).
 
+## Always query live, never from memory
+
+Issue state on Sentry changes constantly. Acting on a stale snapshot causes redundant
+mutations and misattribution — a real incident came from working off a weeks-old triage
+note instead of live state.
+
+1. **Query live, in this session.** When asked to look at, triage, report on, or mutate
+   Sentry issues, always run fresh queries now (`get_sentry_resource`, `search_issues`,
+   `search_errors`, ...). Never answer from prior snapshots: earlier session transcripts,
+   saved triage notes, knowledge-graph context, cached dashboards, or issue state recalled
+   from previous conversations.
+2. **Check live state before any mutation.** Before resolving, ignoring, or reassigning
+   (via `update_issue`), fetch the issue's current status first. If the live state already
+   matches the intended outcome, skip the mutation and say so.
+3. **Verify after writing.** After any mutation, re-fetch the issue live and confirm the
+   actual state before reporting completion. Never claim done from the mutation call alone.
+
 ## Before any call
 
 1. **Know the organization.** Most tools need `organizationSlug` unless you pass a Sentry
