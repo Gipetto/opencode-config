@@ -3,6 +3,13 @@ description: Reviews a change for accuracy against the brief after checks have p
 mode: subagent
 # model: omlx/Qwen3.8-27B-MLX-6bit
 model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
+options:
+  reasoning_effort: xhigh
+  thinking_budget: 16384
+  reasoningEffort: xhigh
+  chatTemplateKwargs:
+    reasoning_effort: xhigh
+    thinking_budget: 16384
 steps: 12
 permission:
   edit: deny

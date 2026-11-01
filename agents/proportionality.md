@@ -2,6 +2,13 @@
 description: Judges whether a verified diff is proportionate to its ticket — blocks speculative abstraction, untraceable code, and unfalsifiable tests. Read-only; runs after verify PASS, before review.
 mode: subagent
 model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
+options:
+  reasoning_effort: xhigh
+  thinking_budget: 16384
+  reasoningEffort: xhigh
+  chatTemplateKwargs:
+    reasoning_effort: xhigh
+    thinking_budget: 16384
 temperature: 0.2
 permission:
   edit: deny
