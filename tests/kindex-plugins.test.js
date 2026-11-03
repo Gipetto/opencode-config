@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdir, stat, utimes, writeFile } from "node:fs/promises"
+import { access, mkdir, stat, utimes, writeFile } from "node:fs/promises"
 import { mkdtemp, rm } from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
@@ -15,7 +15,7 @@ process.env.XDG_STATE_HOME = join(root, "state")
 process.env.KINDEX_POLICY_PATH = join(root, "policy.md")
 await writeFile(process.env.KINDEX_POLICY_PATH, "policy one")
 
-const [{ serializeMessage, createJournalStore, flushJournal }, { default: memoryPlugin }] = await Promise.all([
+const [{ serializeMessage, messageKey, needsFlush, createJournalStore, flushJournal }, { default: memoryPlugin }] = await Promise.all([
   import("../plugins/kindex-compaction/index.js"),
   import("../plugins/kindex-memory/index.js"),
 ])
@@ -562,4 +562,291 @@ test("reloads policy text and injects it for context and compaction hooks", asyn
   const compaction = { system: [], sessionID: "policy-session" }
   await hooks.get("compaction")(compaction)
   assert.ok(compaction.system.some((part) => part.text === "policy two"))
+})
+
+test("re-probes kin availability at compaction after a failed startup probe", async () => {
+  const hooks = new Map()
+  const commands = []
+  let probeCount = 0
+  const child = (stdout, code) => ({
+    stdout: { text: async () => stdout },
+    exited: Promise.resolve(code),
+    kill() {},
+  })
+  globalThis.Bun = {
+    spawn(args) {
+      commands.push(args)
+      if (args[1] === "--version") {
+        probeCount++
+        return probeCount > 1 ? child("kin 1.2.3", 0) : child("", 1)
+      }
+      return child("decisions: ship the plugin", 0)
+    },
+  }
+
+  try {
+    await memoryPlugin.setup({
+      options: {},
+      location: { directory: root, workspaceID: "ws-probe", project: { directory: root } },
+      session: { async hook(name, callback) { hooks.set(name, callback) } },
+    })
+    assert.equal(probeCount, 1)
+
+    const compaction = { sessionID: "probe-session", system: [] }
+    await hooks.get("compaction")(compaction)
+    assert.equal(probeCount, 2)
+    assert.ok(commands.some((args) => args[0] === "kin" && args[1] === "context"))
+    assert.ok(compaction.system.some((part) => part.text.includes("decisions: ship the plugin")))
+
+    await hooks.get("compaction")({ sessionID: "probe-session", system: [] })
+    assert.equal(probeCount, 2)
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("scores the idle gate against the new delta and pending retries instead of full history", () => {
+  const gate = { minCaptureChars: 6000 }
+  const long = userMessage("u-old", "x".repeat(7000))
+  const longText = serializeMessage(long)
+  const small = userMessage("u-new", "tiny follow-up")
+  const captured = { version: 1, messages: [{
+    key: messageKey(long, longText), id: "u-old", source: longText,
+    chunks: [{ body: longText, state: "unknown", attempts: 1, nextAttemptAt: 0 }],
+  }] }
+
+  assert.equal(needsFlush([long, small], captured, gate), false)
+  captured.messages[0].chunks[0].state = "pending"
+  assert.equal(needsFlush([long, small], captured, gate), true)
+
+  captured.messages[0].chunks[0].state = "unknown"
+  assert.equal(needsFlush([long, small], { version: 1, messages: [] }, gate), true)
+  const boundary = [
+    { id: "c1", type: "compaction", status: "completed", summary: "short summary" },
+    small,
+  ]
+  assert.equal(needsFlush([long, ...boundary], { version: 1, messages: [] }, gate), false)
+})
+
+test("routes compaction captures through the short chunk timeout and idle captures through the long one", async () => {
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-timeouts")
+  const opts = { ...options, chunkTimeoutMs: 120000, compactChunkTimeoutMs: 10000 }
+  const legacy = { ...options, chunkTimeoutMs: 120000 }
+  const timeouts = []
+  const runKin = async (text, timeoutMs) => { timeouts.push(timeoutMs); return { status: "success" } }
+
+  await flushJournal({
+    store, sessionID: "timeout-session", messages: [userMessage("u1", "compaction capture")],
+    options: opts, includeRecent: true, runKin,
+  })
+  await flushJournal({
+    store, sessionID: "timeout-session",
+    messages: [userMessage("u1", "compaction capture"), userMessage("u2", "idle capture")],
+    options: opts, includeRecent: false, runKin,
+  })
+  await flushJournal({
+    store, sessionID: "legacy-session", messages: [userMessage("u1", "no knob set")],
+    options: legacy, includeRecent: true, runKin,
+  })
+
+  assert.deepEqual(timeouts, [10000, 120000, 120000])
+})
+
+test("prunes captured payloads below the live boundary but keeps dedup keys", async () => {
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-prune")
+  const old = userMessage("u-old", "history that was already captured")
+  const first = await flushJournal({
+    store, sessionID: "prune-session", messages: [old], options, includeRecent: true,
+    runKin: async () => ({ status: "success" }),
+  })
+  assert.ok(first.journal.messages[0].source)
+
+  const boundary = { id: "c1", type: "compaction", status: "completed", summary: "new window" }
+  await flushJournal({
+    store, sessionID: "prune-session",
+    messages: [boundary, userMessage("u-new", "after boundary")],
+    options, includeRecent: true, runKin: async () => ({ status: "success" }),
+  })
+  const journal = await store.read("prune-session")
+  const pruned = journal.messages.find((item) => item.id === "u-old")
+
+  assert.equal(pruned.source, undefined)
+  assert.ok(pruned.key)
+  assert.ok(pruned.chunks.every((chunk) => chunk.body === undefined))
+  assert.ok(journal.messages.find((item) => item.id === "u-new").source.includes("after boundary"))
+})
+
+test("does not recapture replayed messages after a revert regresses the boundary", async () => {
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-revert")
+  const old = userMessage("u-old", "captured before the revert")
+  const mid = userMessage("u-mid", "captured after compaction")
+  await flushJournal({
+    store, sessionID: "revert-session", messages: [old], options, includeRecent: true,
+    runKin: async () => ({ status: "success" }),
+  })
+  const boundary = { id: "c1", type: "compaction", status: "completed", summary: "summary" }
+  await flushJournal({
+    store, sessionID: "revert-session", messages: [boundary, mid], options, includeRecent: true,
+    runKin: async () => ({ status: "success" }),
+  })
+
+  const calls = []
+  await flushJournal({
+    store, sessionID: "revert-session", messages: [old, mid], options, includeRecent: true,
+    runKin: async (text) => { calls.push(text); return { status: "success" } },
+  })
+
+  assert.equal(calls.length, 0)
+})
+
+test("flushes the tail and garbage-collects the journal when a session is deleted", async () => {
+  const projectDirectory = join(root, "delete-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const seed = (sessionID, messages = [userMessage("u-seed", `seeded ${sessionID}`)]) => flushJournal({
+    store, sessionID, messages,
+    options, includeRecent: true, runKin: async () => ({ status: "failure", error: "kin down" }),
+  })
+  await seed("gone-session")
+  await seed("foreign-session")
+  await seed("failed-session", [userMessage("u-bad", "undeliverable tail message")])
+  assert.ok((await store.read("gone-session")).messages.length > 0)
+
+  const feed = eventFeed()
+  const spawned = []
+  const readable = (value) => new ReadableStream({
+    start(controller) {
+      if (value) controller.enqueue(new TextEncoder().encode(value))
+      controller.close()
+    },
+  })
+  globalThis.Bun = {
+    spawn(args, spawnOptions) {
+      spawned.push(args)
+      const undeliverable = spawnOptions?.stdin
+        && new TextDecoder().decode(spawnOptions.stdin).includes("undeliverable")
+      return {
+        stdout: readable(undeliverable ? "" : "staged"),
+        stderr: readable(undeliverable ? "kin down" : ""),
+        exited: Promise.resolve(undeliverable ? 1 : 0),
+        kill() {},
+      }
+    },
+  }
+  const ctx = {
+    options: { ...options, prime: false, chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000 },
+    location: { directory: projectDirectory, workspaceID: "ws-delete", project: { directory: projectDirectory } },
+    session: {
+      async context() {
+        throw new Error("session context must not be read for deleted sessions")
+      },
+      async get() {
+        throw new Error("session lookup must not run for deleted sessions")
+      },
+      async hook() {},
+    },
+    event: { subscribe: (opts) => feed.subscribe(opts) },
+  }
+
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    feed.push({
+      type: "session.deleted", data: { sessionID: "foreign-session" },
+      location: { directory: join(root, "elsewhere"), workspaceID: "ws-delete" },
+    })
+    feed.push({
+      type: "session.deleted", data: { sessionID: "failed-session" },
+      location: { directory: projectDirectory, workspaceID: "ws-delete" },
+    })
+    feed.push({ type: "session.deleted", data: { sessionID: "gone-session" } })
+    const file = join(store.dir, `${createHash("sha256").update("gone-session").digest("hex")}.json`)
+    const failedFile = join(store.dir, `${createHash("sha256").update("failed-session").digest("hex")}.json`)
+    let retained = { messages: [] }
+    for (let i = 0; i < 100; i++) {
+      try { await access(file) } catch { break }
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    for (let i = 0; i < 100; i++) {
+      retained = await store.read("failed-session")
+      if (retained.messages.some((item) => item.id === "u-bad")) break
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+
+    await assert.rejects(access(file))
+    assert.ok(retained.messages.some((item) =>
+      item.id === "u-bad" && item.chunks.some((chunk) => chunk.state === "pending")
+    ))
+    await access(failedFile)
+    assert.equal(spawned.filter((args) => args.includes("compact-hook")).length, 2)
+    assert.equal((await store.read("foreign-session")).messages.length, 1)
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("sweeps stale startup journals for this location and leaves fresh ones alone", async () => {
+  const projectDirectory = join(root, "sweep-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  await mkdir(store.dir, { recursive: true, mode: 0o700 })
+  const seedFile = async (sessionID, mtime) => {
+    const file = join(store.dir, `${createHash("sha256").update(sessionID).digest("hex")}.json`)
+    await writeFile(file, JSON.stringify({ version: 1, messages: [], session: sessionID }))
+    await utimes(file, mtime, mtime)
+  }
+  const twoDaysAgo = new Date(Date.now() - 48 * 3600 * 1000)
+  await seedFile("sweep-stale", twoDaysAgo)
+  await seedFile("sweep-fresh", new Date())
+  await writeFile(join(store.dir, "corrupt.json"), "{not json")
+
+  const feed = eventFeed()
+  const spawned = []
+  const readable = (value) => new ReadableStream({
+    start(controller) {
+      if (value) controller.enqueue(new TextEncoder().encode(value))
+      controller.close()
+    },
+  })
+  globalThis.Bun = {
+    spawn(args) {
+      spawned.push(args)
+      return {
+        stdout: readable("staged"), stderr: readable(""), exited: Promise.resolve(0), kill() {},
+      }
+    },
+  }
+  const ctx = {
+    options: {
+      ...options, dropRecentTurns: 2, prime: false,
+      chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000,
+    },
+    location: { directory: projectDirectory, workspaceID: "ws-sweep", project: { directory: projectDirectory } },
+    session: {
+      async context({ sessionID }) {
+        if (sessionID === "sweep-stale") return [userMessage("u-tail", "tail lost to quiet exit")]
+        if (sessionID === "sweep-fresh") return [userMessage("u-live", "still in progress")]
+        throw new Error(`unexpected context read for ${sessionID}`)
+      },
+      async hook() {},
+    },
+    event: { subscribe: (opts) => feed.subscribe(opts) },
+  }
+
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    for (let i = 0; i < 100 && !spawned.some((args) => args.includes("compact-hook")); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    let stale = await store.read("sweep-stale")
+    for (let i = 0; i < 100 && !stale.messages.some((item) => item.chunks.every((chunk) => chunk.state === "unknown")); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      stale = await store.read("sweep-stale")
+    }
+
+    assert.ok(stale.messages.some((item) => item.source.includes("tail lost to quiet exit")))
+    assert.equal((await store.read("sweep-fresh")).messages.length, 0)
+    assert.equal(spawned.filter((args) => args.includes("compact-hook")).length, 1)
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
 })

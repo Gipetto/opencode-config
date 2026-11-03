@@ -34,6 +34,8 @@ function getPolicy() {
 async function safeRun(command, cwd, timeoutMs) {
   let process
   let timer
+  let escalation
+  let exited = false
   try {
     process = Bun.spawn(command, {
       cwd,
@@ -41,13 +43,23 @@ async function safeRun(command, cwd, timeoutMs) {
       stdout: "pipe",
       stderr: "ignore",
     })
+    const clearEscalation = () => {
+      exited = true
+      clearTimeout(escalation)
+    }
+    process.exited.then(clearEscalation, clearEscalation)
     const timedOut = new Promise((resolve) => {
       timer = setTimeout(() => {
         process.kill()
+        if (!exited) {
+          escalation = setTimeout(() => {
+            try { process.kill(9) } catch {}
+          }, 1000)
+        }
         resolve("")
       }, timeoutMs)
     })
-    const output = process.stdout.text()
+    const output = process.stdout.text().catch(() => "")
     const result = await Promise.race([
       process.exited.then((code) => code === 0 ? output : ""),
       timedOut,
@@ -72,8 +84,14 @@ export default Plugin.define({
   id: "kindex-memory",
   async setup(ctx) {
     const cwd = ctx.location.project?.directory || ctx.location.directory
-    const probe = await safeRun(["kin", "--version"], cwd, KIN_TIMEOUT_MS)
-    const kinAvailable = Boolean(probe.trim())
+    let kinAvailable = false
+    const ensureKin = async () => {
+      if (!kinAvailable) {
+        kinAvailable = Boolean((await safeRun(["kin", "--version"], cwd, KIN_TIMEOUT_MS)).trim())
+      }
+      return kinAvailable
+    }
+    await ensureKin()
 
     await ctx.session.hook("context", async (event) => {
       try {
@@ -89,7 +107,7 @@ export default Plugin.define({
         const policy = getPolicy()
         if (policy) event.system.push({ type: "text", text: policy })
 
-        if (!kinAvailable) return
+        if (!(await ensureKin())) return
 
         const orientation = truncate(
           await safeRun(["kin", "context"], cwd, KIN_TIMEOUT_MS),
