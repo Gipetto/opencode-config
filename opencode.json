@@ -2,10 +2,10 @@
   "$schema": "https://opencode.ai/config.json",
   "compaction": {
     "auto": true,
-    "preserve_recent_tokens": 8192,
-    "prune": false,
-    "reserved": 6000,
-    "tail_turns": 6
+    "keep": {
+      "tokens": 8192
+    },
+    "buffer": 6000
   },
   "lsp": true,
   "mcp": {
@@ -215,10 +215,12 @@
       ".gitnexus/**"
     ]
   },
-  // "model": "omlx/Qwen3.8-27B-MLX-6bit",
+  "model": "omlx/Qwen3.8-Flash-Next-oQ4e-mtp",
   // "small_model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit",
   "default_agent": "orchestrator",
-  "subagent_depth": 1,
+  "experimental": {
+    "subagent_depth": 1
+  },
   "agent": {
     // "compaction": {
     //   "model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit"
