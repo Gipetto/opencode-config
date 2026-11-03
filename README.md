@@ -59,9 +59,17 @@ subagents.
 
 ## Plugins
 
-`plugins/kindex-compaction.js` is active: it integrates kindex with context
-compaction, reading `../kindex/opencode.yaml` and talking to the local omlx
-server. Auto-compaction is on, preserving the last 6 turns (compaction.tail_turns).
+`plugins/kindex-compaction/` journals complete serialized session messages
+before compaction under `${XDG_STATE_HOME:-~/.local/state}/opencode/kindex-compaction/`.
+The journal is private to the user (0700 directory, 0600 files) and retains
+source text across restarts and compactions. It has no automatic expiry because
+`kin compact-hook` does not confirm that every extracted candidate was saved.
+The plugin marks successful process exits as unconfirmed, keeps that source,
+and does not retry it automatically. Explicit process failures remain pending
+for a later attempt; partial writes can create duplicate candidates on retry.
+This protects the source text, but it cannot guarantee Kindex extraction or
+exactly-once delivery. Review journal size and remove files only when their
+source is no longer needed.
 
 ## Permissions
 

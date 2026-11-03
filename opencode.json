@@ -103,7 +103,7 @@
   },
   "plugin": [
     [
-      "./plugins/kindex-compaction.js",
+      "./plugins/kindex-compaction",
       {
         "configPath": "../kindex/opencode.yaml",
         "env": {
@@ -112,7 +112,8 @@
         },
         "debug": true
       }
-    ]
+    ],
+    "./plugins/kindex-memory"
   ],
   "provider": {
     "lmstudio": {
