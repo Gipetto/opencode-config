@@ -11,23 +11,46 @@ options:
     reasoning_effort: xhigh
     thinking_budget: 16384
 steps: 12
-permission:
-  edit: deny
-  write: deny
-  apply_patch: deny
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git show*": allow
-    "git log*": allow
-    "git status*": allow
-    "grep*": allow
-    "rg*": allow
-    "head*": allow
-    "tail*": allow
-    "wc*": allow
-    "sort*": allow
-    "uniq*": allow
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git diff *"
+    effect: allow
+  - action: shell
+    resource: "git show *"
+    effect: allow
+  - action: shell
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "grep *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "head *"
+    effect: allow
+  - action: shell
+    resource: "tail *"
+    effect: allow
+  - action: shell
+    resource: "wc *"
+    effect: allow
+  - action: shell
+    resource: "sort *"
+    effect: allow
+  - action: shell
+    resource: "uniq *"
+    effect: allow
 ---
 
 You are a review agent. The automated checks have already passed. Your only job

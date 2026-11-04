@@ -52,55 +52,218 @@
       "type": "local"
     }
   },
-  "permission": {
-    "bash": {
-      "gh*": "ask",
-      "gh auth status *": "allow",
-      "gh browse *": "allow",
-      "gh gist list *": "allow",
-      "gh gist view *": "allow",
-      "gh issue assign *": "allow",
-      "gh issue comment *": "allow",
-      "gh issue create *": "allow",
-      "gh issue edit *": "allow",
-      "gh issue list *": "allow",
-      "gh issue status *": "allow",
-      "gh issue view *": "allow",
-      "gh label list *": "allow",
-      "gh pr *": "allow",
-      "gh release list *": "allow",
-      "gh release view *": "allow",
-      "gh repo list *": "allow",
-      "gh repo view *": "allow",
-      "gh run list *": "allow",
-      "gh run view *": "allow",
-      "gh run watch *": "allow",
-      "gh search *": "allow",
-      "gh status *": "allow",
-      "gh workflow list *": "allow",
-      "gh workflow view *": "allow",
-      "git push*": "allow"
+  "permissions": [
+    {
+      "action": "shell",
+      "resource": "gh *",
+      "effect": "ask"
     },
-    "doom_loop": "deny",
-    "external_directory": {
-      "*": "ask",
-      "/var/folders/**/T/**": "allow",
-      "/private/var/folders/**/T/**": "allow",
-      "~/Projects/quizstreak*": "allow",
-      "~/Projects/quizstreak*/**": "allow",
-      "~/.config/opencode/skills/**/references/*": "allow",
-      "~/.config/opencode/skills/**/references/**": "allow",
-      "~/.agents/skills/**/references/*": "allow",
-      "~/.agents/skills/**/references/**": "allow"
+    {
+      "action": "shell",
+      "resource": "gh auth status *",
+      "effect": "allow"
     },
-    "postgres_*": "deny",
-    "question": "allow",
-    "safari-mcp_*": "deny",
-    "sentry_*": "deny",
-    "skill": "allow",
-    "svelte_*": "deny",
-    "websearch": "allow"
-  },
+    {
+      "action": "shell",
+      "resource": "gh browse *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh gist list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh gist view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue assign *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue comment *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue create *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue edit *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue status *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh label list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh pr *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh release list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh release view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh repo list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh repo view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh run list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh run view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh run watch *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh search *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh status *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh workflow list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh workflow view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git push *",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
+      "action": "external_directory",
+      "resource": "/var/folders/**/T/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "/private/var/folders/**/T/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/Projects/quizstreak*",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/Projects/quizstreak*/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.config/opencode/skills/**/references/*",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.config/opencode/skills/**/references/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.agents/skills/**/references/*",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.agents/skills/**/references/**",
+      "effect": "allow"
+    },
+    {
+      "action": "postgres_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "question",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "safari-mcp_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "sentry_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "skill",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "svelte_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "websearch",
+      "resource": "*",
+      "effect": "allow"
+    }
+  ],
   "plugin": [
     [
       "./plugins/kindex-compaction",
