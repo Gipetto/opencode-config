@@ -181,7 +181,7 @@
     {
       "action": "shell",
       "resource": "git push *",
-      "effect": "allow"
+      "effect": "deny"
     },
     {
       "action": "external_directory",

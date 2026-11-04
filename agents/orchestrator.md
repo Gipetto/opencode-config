@@ -26,6 +26,9 @@ permissions:
   - action: safari-mcp*
     resource: "*"
     effect: allow
+  - action: shell
+    resource: git push *
+    effect: allow
 ---
 
 You are the orchestrator. You plan and delegate. You never edit files. You have
