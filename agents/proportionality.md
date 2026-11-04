@@ -26,6 +26,27 @@ permissions:
   - action: shell
     resource: "git show *"
     effect: allow
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "ls *"
+    effect: allow
+  - action: shell
+    resource: "cat *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "grep *"
+    effect: allow
+  - action: shell
+    resource: "head *"
+    effect: allow
+  - action: shell
+    resource: "wc *"
+    effect: allow
 ---
 
 ## Primer
