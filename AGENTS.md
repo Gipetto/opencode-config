@@ -278,6 +278,10 @@ misleads silently.
 - When dispatching the gate, the brief includes the Accepted-justifications
   lines from prior gate runs in the workstream (read from the kindex gate
   node).
+- When dispatching the gate, the orchestrator pre-dumps the changeset to a
+  file under $TMPDIR/opencode/ and cites that path in the brief, so the gate
+  reads the diff through its always-available read tool rather than depending
+  on its own shell.
 - Review receives the proportionality report with the diff so it does not
   re-litigate the same ground.
 - CLARIFY verdict: never answer the gate's clarification items yourself —

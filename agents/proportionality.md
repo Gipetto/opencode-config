@@ -117,6 +117,8 @@ Style, naming, placement, and structure preferences without a cost argument: rev
 
 Scope every query to the diff plus callers of new symbols and new blocks — no repo-wide sweeps. `git diff`/`git show` for the diff; GitNexus for caller counts; grep for absence and domain-verb reuse.
 
+When the brief cites a changeset file path, read that file with the read tool in preference to reconstructing the diff through the shell. Falling back to network or git reconstruction is a last resort to be reported as degraded-evidence, never silently substituted.
+
 ## Output contract
 
 Every section is mandatory; empty ones carry an explicit nothing-to-report line (e.g. "None — every hunk mapped to a criterion"). An omitted section is a report defect.
