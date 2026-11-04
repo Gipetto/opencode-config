@@ -216,14 +216,10 @@
     ]
   },
   "model": "omlx/Qwen3.8-Flash-Next-oQ4e-mtp",
-  // "small_model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit",
   "default_agent": "orchestrator",
   "experimental": {
     "subagent_depth": 1
   },
-  "agent": {
-    // "compaction": {
-    //   "model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit"
-    // }
-  }
+  "agent": {},
+  "shell": "zsh"
 }

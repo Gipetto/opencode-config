@@ -4,29 +4,70 @@ mode: subagent
 # model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
 model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
 steps: 25
-permission:
-  edit: allow
-  write: allow
-  apply_patch: deny
-  bash:
-    "*": deny
-    "npm run *": "allow"
-    "npm test*": "allow"
-    "npm *": "allow"
-    "npx *": "allow"
-    "yarn *": "allow"
-    "pnpm *": "allow"
-    "make *": "allow"
-    "tsc*": "allow"
-    "node *": "allow"
-    "vitest*": "allow"
-    "svelte-check*": "allow"
-    "git status*": "allow"
-    "git diff*": "allow"
-    "git log*": "allow"
-  postgres*: deny
-  sentry*: deny
-  svelte*: allow
+permissions:
+  - action: edit
+    resource: "*"
+    effect: allow
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "npm run *"
+    effect: allow
+  - action: shell
+    resource: "npm test *"
+    effect: allow
+  - action: shell
+    resource: "npm *"
+    effect: allow
+  - action: shell
+    resource: "npx *"
+    effect: allow
+  - action: shell
+    resource: "yarn *"
+    effect: allow
+  - action: shell
+    resource: "pnpm *"
+    effect: allow
+  - action: shell
+    resource: "make *"
+    effect: allow
+  - action: shell
+    resource: "tsc *"
+    effect: allow
+  - action: shell
+    resource: "node *"
+    effect: allow
+  - action: shell
+    resource: "vitest *"
+    effect: allow
+  - action: shell
+    resource: "svelte-check *"
+    effect: allow
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "git diff *"
+    effect: allow
+  - action: shell
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "gh *"
+    effect: deny
+  - action: shell
+    resource: "git push *"
+    effect: deny
+  - action: postgres*
+    resource: "*"
+    effect: deny
+  - action: sentry*
+    resource: "*"
+    effect: deny
+  - action: svelte*
+    resource: "*"
+    effect: allow
 ---
 
 You are an implementation agent. You apply a change that has already been
@@ -54,7 +95,9 @@ If an exact-string edit fails twice, rewrite the smallest enclosing function or
 block rather than retrying the match. Do not rewrite the whole file; large
 writes fail against the local server.
 
-You have no shell access. Never report PASS, and never claim the change works.
+A restricted shell is available: only whitelisted build/test runners and git
+inspection (status, diff, log) run; everything else, including `gh` and
+`git push`, is denied. Never report PASS, and never claim the change works.
 
 Deletions are only for files the brief names explicitly, and you cannot delete
 files in this session — if the brief requires a deletion, report it as blocked.
@@ -67,9 +110,13 @@ Do not write a script to work around it, and do not retry.
 These stop rules override the brief. If the brief asks for steps beyond the point
 where you should stop, do not perform them.
 
-You have no shell. You cannot run typechecks, tests, builds, or git commands. If
-the brief asks for any of them, make the edit, then stop and report that verification
-was requested but is not available to you. Do not write a script to work around it.
+A restricted shell is available for whitelisted build/test runners (npm, npx,
+yarn, pnpm, make, tsc, node, vitest, svelte-check) and git inspection (status,
+diff, log). Every subcommand of a compound command must itself be whitelisted,
+so never mutate files through the shell — use the edit tool, not shell
+redirection. If the brief asks for a check outside the whitelist, make the
+edit, then stop and report that verification was requested but is not available
+to you. Do not write a script to work around it.
 
 Report back: files touched, one line per change, and anything you couldn't do.
 No diffs, no file contents. Don't claim the change is correct. Verification is
@@ -79,9 +126,10 @@ someone else's job.
 
 Never report a commit, push, test run, or file edit you did not perform. Do not
 invent SHAs. Report only outcomes you directly verified this session, with the
-command you ran. If blocked or unable to run something, e.g. no shell access,
-say exactly that; do not describe intended commands as executed. If the repo
-state contradicts the brief, report the contradiction instead of reconciling it
+command you ran. If blocked or unable to run something, e.g. a command outside
+the shell whitelist, say exactly that; do not describe intended commands as
+executed. If the repo state contradicts the brief, report the contradiction
+instead of reconciling it
 narratively. If a brief cites a Kindex node, pull it with `kindex_show` before
 editing; if the node and the brief disagree, stop and report the conflict — do
 not pick a winner.

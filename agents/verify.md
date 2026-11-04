@@ -4,51 +4,133 @@ mode: subagent
 # model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
 model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
 steps: 20
-permission:
-  edit: deny
-  write: deny
-  apply_patch: deny
-  bash:
-    "*": deny
-    "pytest*": allow
-    "python -m pytest*": allow
-    "python -m unittest*": allow
-    "yarn test*": allow
-    "npm test*": allow
-    "pnpm test*": allow
-    "bun test*": allow
-    "make test*": allow
-    "make ship*": allow
-    "make check*": allow
-    "tsc*": allow
-    "npx tsc*": allow
-    "mypy*": allow
-    "ruff*": allow
-    "eslint*": allow
-    "npx eslint*": allow
-    "prettier --check*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "ls*": allow
-    "cat*": allow
-    "rg*": allow
-    "grep*": allow
-    "find*": allow
-    "wc*": allow
-    "node --version*": allow
-    "python* --version*": allow
-    "gh *": deny
-    "npm run *": "allow"
-    "npm *": "allow"
-    "npx *": "allow"
-    "yarn *": "allow"
-    "pnpm *": "allow"
-    "make *": "allow"
-    "node *": "allow"
-    "vitest*": "allow"
-    "svelte-check*": "allow"
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "pytest *"
+    effect: allow
+  - action: shell
+    resource: "python -m pytest *"
+    effect: allow
+  - action: shell
+    resource: "python -m unittest *"
+    effect: allow
+  - action: shell
+    resource: "yarn test *"
+    effect: allow
+  - action: shell
+    resource: "npm test *"
+    effect: allow
+  - action: shell
+    resource: "pnpm test *"
+    effect: allow
+  - action: shell
+    resource: "bun test *"
+    effect: allow
+  - action: shell
+    resource: "make test *"
+    effect: allow
+  - action: shell
+    resource: "make ship *"
+    effect: allow
+  - action: shell
+    resource: "make check *"
+    effect: allow
+  - action: shell
+    resource: "tsc *"
+    effect: allow
+  - action: shell
+    resource: "npx tsc *"
+    effect: allow
+  - action: shell
+    resource: "mypy *"
+    effect: allow
+  - action: shell
+    resource: "ruff *"
+    effect: allow
+  - action: shell
+    resource: "eslint *"
+    effect: allow
+  - action: shell
+    resource: "npx eslint *"
+    effect: allow
+  - action: shell
+    resource: "prettier --check *"
+    effect: allow
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "git diff *"
+    effect: allow
+  - action: shell
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "git show *"
+    effect: allow
+  - action: shell
+    resource: "ls *"
+    effect: allow
+  - action: shell
+    resource: "cat *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "grep *"
+    effect: allow
+  - action: shell
+    resource: "find *"
+    effect: allow
+  - action: shell
+    resource: "wc *"
+    effect: allow
+  - action: shell
+    resource: "node --version *"
+    effect: allow
+  - action: shell
+    resource: "python* --version *"
+    effect: allow
+  - action: shell
+    resource: "gh *"
+    effect: deny
+  - action: shell
+    resource: "npm run *"
+    effect: allow
+  - action: shell
+    resource: "npm *"
+    effect: allow
+  - action: shell
+    resource: "npx *"
+    effect: allow
+  - action: shell
+    resource: "yarn *"
+    effect: allow
+  - action: shell
+    resource: "pnpm *"
+    effect: allow
+  - action: shell
+    resource: "make *"
+    effect: allow
+  - action: shell
+    resource: "node *"
+    effect: allow
+  - action: shell
+    resource: "vitest *"
+    effect: allow
+  - action: shell
+    resource: "svelte-check *"
+    effect: allow
+  - action: shell
+    resource: "git push *"
+    effect: deny
 ---
 
 You are a verification agent. You check work you did not do. You never modify
