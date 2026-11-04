@@ -278,91 +278,104 @@
     ],
     "./plugins/kindex-memory"
   ],
-  "provider": {
-    "lmstudio": {
-      "models": {},
-      "name": "LM Studio (Local)",
-      "npm": "@ai-sdk/openai-compatible",
-      "options": {
-        "baseUrl": "http://127.0.0.1:1234/v1"
-      }
-    },
+  "providers": {
     "omlx": {
+      "name": "OMLX (Local)",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "{file:secrets/omlx-api-key}"
+      },
       "models": {
         "Qwen3.8-27B-8bit": {
+          "name": "Qwen 3.8 27B Q8 (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q8 (omlx)",
-          "options": {}
+          }
         },
         "Qwen3.8-27B-MLX-6bit": {
+          "name": "Qwen 3.8 27B Q6 (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q6 (omlx)",
-          "options": {},
-          "variants": {}
+          }
         },
         "Qwen3.8-27B-MLX-6bit-32k": {
+          "name": "Qwen 3.8 27B Q6 32k context (omlx)",
+          "modelID": "Qwen3.8-27B-MLX-6bit-32k",
           "limit": {
             "context": 32000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q6 32k context (omlx)",
-          "id": "Qwen3.8-27B-MLX-6bit-32k",
-          "options": {},
-          "variants": {}
+          }
         },
         "Qwen3.8-27B-MLX-4bit": {
+          "name": "Qwen 3.8 27B Q4 (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q4 (omlx)",
-          "options": {}
+          }
         },
         "Qwen3.6-35B-A3B-MLX-mixed-4bit": {
+          "name": "Qwen 3.6 35B A3B MoE (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.6 35B A3B MoE (omlx)",
-          "options": {}
+          }
         },
         "Qwen3.6-35B-A3B-MLX-mixed-4bit-32k": {
+          "name": "Qwen 3.6 35B A3B MoE 32k context (omlx)",
+          "modelID": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
           "limit": {
             "context": 32000,
             "output": 4096
-          },
-          "name": "Qwen 3.6 35B A3B MoE 32k context (omlx)",
-          "id": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
-          "options": {}
+          }
         },
         "Qwen3.6-35B-A3B-MLX-mixed-4bit-64k": {
+          "name": "Qwen 3.6 35B A3B MoE 64k context (omlx)",
+          "modelID": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
           "limit": {
             "context": 64000,
             "output": 4096
-          },
-          "name": "Qwen 3.6 35B A3B MoE 64k context (omlx)",
-          "id": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
-          "options": {}
+          }
         },
         "Qwen3.8-Flash-Next-oQ4e-mtp": {
+          "name": "Qwen3.8 Flash Next oQ4e MTP (omlx)",
           "limit": {
             "context": 150000,
             "output": 16384
           },
-          "options": {}
+          "variants": [
+            {
+              "id": "fast",
+              "body": {
+                "temperature": 0.3,
+                "chat_template_kwargs": {
+                  "enable_thinking": false
+                }
+              }
+            },
+            {
+              "id": "think",
+              "body": {
+                "chat_template_kwargs": {
+                  "reasoning_effort": "xhigh",
+                  "thinking_budget": 16384
+                }
+              }
+            },
+            {
+              "id": "gate",
+              "body": {
+                "temperature": 0.2,
+                "chat_template_kwargs": {
+                  "reasoning_effort": "xhigh",
+                  "thinking_budget": 16384
+                }
+              }
+            }
+          ]
         }
-      },
-      "name": "OMLX (Local)",
-      "npm": "@ai-sdk/openai-compatible",
-      "options": {
-        "apiKey": "{file:secrets/omlx-api-key}",
-        "baseURL": "http://127.0.0.1:8000/v1"
       }
     }
   },

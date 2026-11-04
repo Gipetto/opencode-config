@@ -2,14 +2,7 @@
 description: Primary planning agent. Analyzes the codebase and proposes a plan of changes without editing.
 mode: primary
 # model: omlx/Qwen3.8-27B-MLX-6bit
-model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
-options:
-  reasoning_effort: xhigh
-  thinking_budget: 16384
-  reasoningEffort: xhigh
-  chatTemplateKwargs:
-    reasoning_effort: xhigh
-    thinking_budget: 16384
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#think
 steps: 20
 permissions:
   - action: edit
