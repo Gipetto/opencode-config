@@ -373,8 +373,22 @@
                   "thinking_budget": 16384
                 }
               }
+            },
+            {
+              "id": "lead",
+              "body": {
+                "temperature": 0.4,
+                "chat_template_kwargs": {
+                  "reasoning_effort": "xhigh",
+                  "thinking_budget": 16384
+                }
+              }
             }
-          ]
+          ],
+          "compatibility": {
+            "reasoningField": "reasoning_content",
+            "requireReasoning": false
+          }
         }
       }
     }

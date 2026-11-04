@@ -2,10 +2,10 @@
 description: Primary orchestrator. Breaks work into steps, delegates to subagents, and gathers context via kindex and gitnexus. Read-only itself.
 mode: primary
 # model: omlx/Qwen3.8-27B-MLX-6bit
-model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#lead
 # steps ceiling is runaway-protection only: workers are individually capped
-# (~150 tool calls) and doom_loop detection catches repetition, so the
-# orchestrator's own step count must not throttle long multi-phase dispatches.
+# (~150 tool calls), so the orchestrator's own step count must not throttle
+# long multi-phase dispatches.
 steps: 500
 permissions:
   - action: edit
