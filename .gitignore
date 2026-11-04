@@ -15,6 +15,7 @@ opencode.*.local.json
 # Local credentials, kept beside this configuration but never committed.
 secrets/*
 !secrets/.gitkeep
+/service.json
 
 # Local recovery artifacts
 opencode.json.bak-*

@@ -2,15 +2,21 @@
 description: Read-only search of the codebase. Finds files, functions, and call sites. Reports what it found, never edits.
 mode: subagent
 #model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
-model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#fast
 steps: 12
-permission:
-  edit: deny
-  write: deny
-  apply_patch: deny
-  bash: deny
-  kindex*: allow
-  gitnexus*: allow
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: kindex*
+    resource: "*"
+    effect: allow
+  - action: gitnexus*
+    resource: "*"
+    effect: allow
 ---
 
 You are a read-only exploration agent. You never edit files.

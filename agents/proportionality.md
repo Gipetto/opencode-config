@@ -1,22 +1,44 @@
 ---
 description: Judges whether a verified diff is proportionate to its ticket — blocks speculative abstraction, untraceable code, and unfalsifiable tests. Read-only; runs after verify PASS, before review.
 mode: subagent
-model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
-options:
-  reasoning_effort: xhigh
-  thinking_budget: 16384
-  reasoningEffort: xhigh
-  chatTemplateKwargs:
-    reasoning_effort: xhigh
-    thinking_budget: 16384
-temperature: 0.2
-permission:
-  edit: deny
-  bash:
-    "*": deny
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#gate
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git diff *"
+    effect: allow
+  - action: shell
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "git show *"
+    effect: allow
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "ls *"
+    effect: allow
+  - action: shell
+    resource: "cat *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "grep *"
+    effect: allow
+  - action: shell
+    resource: "head *"
+    effect: allow
+  - action: shell
+    resource: "wc *"
+    effect: allow
 ---
 
 ## Primer
@@ -86,6 +108,8 @@ Style, naming, placement, and structure preferences without a cost argument: rev
 ## Evidence procedure
 
 Scope every query to the diff plus callers of new symbols and new blocks — no repo-wide sweeps. `git diff`/`git show` for the diff; GitNexus for caller counts; grep for absence and domain-verb reuse.
+
+When the brief cites a changeset file path, read that file with the read tool in preference to reconstructing the diff through the shell. Falling back to network or git reconstruction is a last resort to be reported as degraded-evidence, never silently substituted.
 
 ## Output contract
 

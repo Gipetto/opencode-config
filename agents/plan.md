@@ -2,32 +2,54 @@
 description: Primary planning agent. Analyzes the codebase and proposes a plan of changes without editing.
 mode: primary
 # model: omlx/Qwen3.8-27B-MLX-6bit
-model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp
-options:
-  reasoning_effort: xhigh
-  thinking_budget: 16384
-  reasoningEffort: xhigh
-  chatTemplateKwargs:
-    reasoning_effort: xhigh
-    thinking_budget: 16384
+model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#think
 steps: 20
-permission:
-  edit: deny
-  bash:
-    "*": deny
-    "git log*": allow
-    "git diff*": allow
-    "git show*": allow
-    "git status*": allow
-    "grep*": allow
-    "rg*": allow
-    "head*": allow
-    "tail*": allow
-    "wc*": allow
-    "gh issue view*": allow
-    "gh issue list*": allow
-  kindex*: allow
-  gitnexus*: allow
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "git diff *"
+    effect: allow
+  - action: shell
+    resource: "git show *"
+    effect: allow
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "grep *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "head *"
+    effect: allow
+  - action: shell
+    resource: "tail *"
+    effect: allow
+  - action: shell
+    resource: "wc *"
+    effect: allow
+  - action: shell
+    resource: "gh issue view *"
+    effect: allow
+  - action: shell
+    resource: "gh issue list *"
+    effect: allow
+  - action: kindex*
+    resource: "*"
+    effect: allow
+  - action: gitnexus*
+    resource: "*"
+    effect: allow
 ---
 
 You are in planning mode. You analyze and propose. You never edit.

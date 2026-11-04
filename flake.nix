@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/0dd31db7e6dbf9ce05697c4545f6fe01accec994";
     flake-utils.url = "github:numtide/flake-utils";
 
-    kindex.url = "github:wandercom/kindex/c77b1f16dd25511862e07c2f2b1d292a0decaa50";
+    kindex.url = "github:wandercom/kindex/9f3c9256bcee9a4e0e91b99068f74c1dd6b0a9d0"; # tag v0.52.0
     kindex.flake = false;
   };
 
@@ -93,7 +93,7 @@
         # The provider-default patch sources kindex's config provider default from LOCAL_LLM_PROVIDER.
         kindex-pkg = pkgs.python3Packages.buildPythonApplication rec {
           pname = "kindex";
-          version = "0.46.0";
+          version = "0.52.0";
           pyproject = true;
 
           src = kindex;

@@ -2,10 +2,10 @@
   "$schema": "https://opencode.ai/config.json",
   "compaction": {
     "auto": true,
-    "preserve_recent_tokens": 8192,
-    "prune": false,
-    "reserved": 6000,
-    "tail_turns": 6
+    "keep": {
+      "tokens": 8192
+    },
+    "buffer": 6000
   },
   "lsp": true,
   "mcp": {
@@ -52,58 +52,221 @@
       "type": "local"
     }
   },
-  "permission": {
-    "bash": {
-      "gh*": "ask",
-      "gh auth status *": "allow",
-      "gh browse *": "allow",
-      "gh gist list *": "allow",
-      "gh gist view *": "allow",
-      "gh issue assign *": "allow",
-      "gh issue comment *": "allow",
-      "gh issue create *": "allow",
-      "gh issue edit *": "allow",
-      "gh issue list *": "allow",
-      "gh issue status *": "allow",
-      "gh issue view *": "allow",
-      "gh label list *": "allow",
-      "gh pr *": "allow",
-      "gh release list *": "allow",
-      "gh release view *": "allow",
-      "gh repo list *": "allow",
-      "gh repo view *": "allow",
-      "gh run list *": "allow",
-      "gh run view *": "allow",
-      "gh run watch *": "allow",
-      "gh search *": "allow",
-      "gh status *": "allow",
-      "gh workflow list *": "allow",
-      "gh workflow view *": "allow",
-      "git push*": "allow"
+  "permissions": [
+    {
+      "action": "shell",
+      "resource": "gh *",
+      "effect": "ask"
     },
-    "doom_loop": "deny",
-    "external_directory": {
-      "*": "ask",
-      "/var/folders/**/T/**": "allow",
-      "/private/var/folders/**/T/**": "allow",
-      "~/Projects/quizstreak*": "allow",
-      "~/Projects/quizstreak*/**": "allow",
-      "~/.config/opencode/skills/**/references/*": "allow",
-      "~/.config/opencode/skills/**/references/**": "allow",
-      "~/.agents/skills/**/references/*": "allow",
-      "~/.agents/skills/**/references/**": "allow"
+    {
+      "action": "shell",
+      "resource": "gh auth status *",
+      "effect": "allow"
     },
-    "postgres_*": "deny",
-    "question": "allow",
-    "safari-mcp_*": "deny",
-    "sentry_*": "deny",
-    "skill": "allow",
-    "svelte_*": "deny",
-    "websearch": "allow"
-  },
+    {
+      "action": "shell",
+      "resource": "gh browse *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh gist list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh gist view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue assign *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue comment *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue create *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue edit *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue status *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh issue view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh label list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh pr *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh release list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh release view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh repo list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh repo view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh run list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh run view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh run watch *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh search *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh status *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh workflow list *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "gh workflow view *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git push *",
+      "effect": "deny"
+    },
+    {
+      "action": "external_directory",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
+      "action": "external_directory",
+      "resource": "/var/folders/**/T/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "/private/var/folders/**/T/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/Projects/quizstreak*",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/Projects/quizstreak*/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.config/opencode/skills/**/references/*",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.config/opencode/skills/**/references/**",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.agents/skills/**/references/*",
+      "effect": "allow"
+    },
+    {
+      "action": "external_directory",
+      "resource": "~/.agents/skills/**/references/**",
+      "effect": "allow"
+    },
+    {
+      "action": "postgres_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "question",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "safari-mcp_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "sentry_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "skill",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "svelte_*",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "websearch",
+      "resource": "*",
+      "effect": "allow"
+    }
+  ],
   "plugin": [
     [
-      "./plugins/kindex-compaction.js",
+      "./plugins/kindex-compaction",
       {
         "configPath": "../kindex/opencode.yaml",
         "env": {
@@ -112,93 +275,121 @@
         },
         "debug": true
       }
-    ]
+    ],
+    "./plugins/kindex-memory"
   ],
-  "provider": {
-    "lmstudio": {
-      "models": {},
-      "name": "LM Studio (Local)",
-      "npm": "@ai-sdk/openai-compatible",
-      "options": {
-        "baseUrl": "http://127.0.0.1:1234/v1"
-      }
-    },
+  "providers": {
     "omlx": {
+      "name": "OMLX (Local)",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "{file:secrets/omlx-api-key}"
+      },
       "models": {
         "Qwen3.8-27B-8bit": {
+          "name": "Qwen 3.8 27B Q8 (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q8 (omlx)",
-          "options": {}
+          }
         },
         "Qwen3.8-27B-MLX-6bit": {
+          "name": "Qwen 3.8 27B Q6 (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q6 (omlx)",
-          "options": {},
-          "variants": {}
+          }
         },
         "Qwen3.8-27B-MLX-6bit-32k": {
+          "name": "Qwen 3.8 27B Q6 32k context (omlx)",
+          "modelID": "Qwen3.8-27B-MLX-6bit-32k",
           "limit": {
             "context": 32000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q6 32k context (omlx)",
-          "id": "Qwen3.8-27B-MLX-6bit-32k",
-          "options": {},
-          "variants": {}
+          }
         },
         "Qwen3.8-27B-MLX-4bit": {
+          "name": "Qwen 3.8 27B Q4 (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.8 27B Q4 (omlx)",
-          "options": {}
+          }
         },
         "Qwen3.6-35B-A3B-MLX-mixed-4bit": {
+          "name": "Qwen 3.6 35B A3B MoE (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
-          },
-          "name": "Qwen 3.6 35B A3B MoE (omlx)",
-          "options": {}
+          }
         },
         "Qwen3.6-35B-A3B-MLX-mixed-4bit-32k": {
+          "name": "Qwen 3.6 35B A3B MoE 32k context (omlx)",
+          "modelID": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
           "limit": {
             "context": 32000,
             "output": 4096
-          },
-          "name": "Qwen 3.6 35B A3B MoE 32k context (omlx)",
-          "id": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
-          "options": {}
+          }
         },
         "Qwen3.6-35B-A3B-MLX-mixed-4bit-64k": {
+          "name": "Qwen 3.6 35B A3B MoE 64k context (omlx)",
+          "modelID": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
           "limit": {
             "context": 64000,
             "output": 4096
-          },
-          "name": "Qwen 3.6 35B A3B MoE 64k context (omlx)",
-          "id": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
-          "options": {}
+          }
         },
         "Qwen3.8-Flash-Next-oQ4e-mtp": {
+          "name": "Qwen3.8 Flash Next oQ4e MTP (omlx)",
           "limit": {
             "context": 150000,
             "output": 16384
           },
-          "options": {}
+          "variants": [
+            {
+              "id": "fast",
+              "body": {
+                "temperature": 0.3,
+                "chat_template_kwargs": {
+                  "enable_thinking": false
+                }
+              }
+            },
+            {
+              "id": "think",
+              "body": {
+                "chat_template_kwargs": {
+                  "reasoning_effort": "xhigh",
+                  "thinking_budget": 16384
+                }
+              }
+            },
+            {
+              "id": "gate",
+              "body": {
+                "temperature": 0.2,
+                "chat_template_kwargs": {
+                  "reasoning_effort": "xhigh",
+                  "thinking_budget": 16384
+                }
+              }
+            },
+            {
+              "id": "lead",
+              "body": {
+                "temperature": 0.4,
+                "chat_template_kwargs": {
+                  "reasoning_effort": "xhigh",
+                  "thinking_budget": 16384
+                }
+              }
+            }
+          ],
+          "compatibility": {
+            "reasoningField": "reasoning_content",
+            "requireReasoning": false
+          }
         }
-      },
-      "name": "OMLX (Local)",
-      "npm": "@ai-sdk/openai-compatible",
-      "options": {
-        "apiKey": "{file:secrets/omlx-api-key}",
-        "baseURL": "http://127.0.0.1:8000/v1"
       }
     }
   },
@@ -214,13 +405,11 @@
       ".gitnexus/**"
     ]
   },
-  // "model": "omlx/Qwen3.8-27B-MLX-6bit",
-  // "small_model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit",
+  "model": "omlx/Qwen3.8-Flash-Next-oQ4e-mtp",
   "default_agent": "orchestrator",
-  "subagent_depth": 1,
-  "agent": {
-    // "compaction": {
-    //   "model": "omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit"
-    // }
-  }
+  "experimental": {
+    "subagent_depth": 1
+  },
+  "agent": {},
+  "shell": "zsh"
 }
