@@ -98,7 +98,8 @@
 
           src = kindex;
 
-          patches = [ ./patches/kindex-wrapper-provider-default.patch ];
+          # The extraction-budget patch caps the existing-titles block in the extraction prompt and makes the extraction output budget configurable via llm.extract_max_tokens.
+          patches = [ ./patches/kindex-wrapper-provider-default.patch ./patches/kindex-extract-prompt-budget.patch ];
 
           build-system = [ pkgs.python3Packages.hatchling ];
 

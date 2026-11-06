@@ -1,0 +1,32 @@
+diff --git a/src/kindex/config.py b/src/kindex/config.py
+index 7a0018fd93..61058ec279 100644
+--- a/src/kindex/config.py
++++ b/src/kindex/config.py
+@@ -349,6 +349,7 @@ class LLMConfig(BaseModel):
+     cache_control: bool = True
+     codebook_min_weight: float = 0.5
+     tier2_max_tokens: int = 4000
++    extract_max_tokens: int = 1000
+     timeout: float = Field(6.0, gt=0, le=3600, allow_inf_nan=False)
+ 
+ 
+diff --git a/src/kindex/extract.py b/src/kindex/extract.py
+index 91fbf8645f..467f83c843 100644
+--- a/src/kindex/extract.py
++++ b/src/kindex/extract.py
+@@ -101,13 +101,13 @@ def llm_extract(
+     if client is None:
+         return None
+ 
+-    titles_str = ", ".join(redact(existing_titles[:100]))
++    titles_str = ", ".join(redact(existing_titles[:20]))
+     prompt = EXTRACT_PROMPT.format(text=redact_text(text)[:4000], existing_titles=titles_str)
+ 
+     try:
+         response = client.messages.create(
+             model=config.llm.model,
+-            max_tokens=1000,
++            max_tokens=config.llm.extract_max_tokens,
+             messages=[{"role": "user", "content": prompt}],
+         )
+ 
