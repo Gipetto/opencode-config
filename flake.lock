@@ -21,17 +21,17 @@
     "kindex": {
       "flake": false,
       "locked": {
-        "lastModified": 1793673781,
-        "narHash": "sha256-UT+lCZopA4P0oy+6Dq1hJ+T4vK5XKU6lJFWKnwsSD7s=",
+        "lastModified": 1793929288,
+        "narHash": "sha256-OLLGuV2535mmowvflntsJy7Y4yhB1d0xr/CUySSIRZc=",
         "owner": "wandercom",
         "repo": "kindex",
-        "rev": "9f3c9256bcee9a4e0e91b99068f74c1dd6b0a9d0",
+        "rev": "4001b07f5afd7e8cd62d1264ebe7890c0d7222ec",
         "type": "github"
       },
       "original": {
         "owner": "wandercom",
         "repo": "kindex",
-        "rev": "9f3c9256bcee9a4e0e91b99068f74c1dd6b0a9d0",
+        "rev": "4001b07f5afd7e8cd62d1264ebe7890c0d7222ec",
         "type": "github"
       }
     },
