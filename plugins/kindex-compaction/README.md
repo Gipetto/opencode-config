@@ -109,6 +109,28 @@ removed only on `session.deleted`, after a successful drain.
 `contextTokens` 800 · `contextTimeoutMs` 8000 · `trustedOnly` false ·
 `prime` true · `primeTokens` 500 · `primeTimeoutMs` 5000 · `debug` false
 
+## Extraction output budget (required kindex config)
+
+The config file passed via `configPath` must set `llm.extract_max_tokens` to at
+least 2000:
+
+```yaml
+llm:
+  extract_max_tokens: 2000
+```
+
+kin's extraction call hardcodes a 1000-token output limit, while a complete
+five-array extraction needs roughly 1700-1900 tokens. The reply is cut mid-JSON,
+the parse throws, kin swallows it and exits 0 having staged nothing — the run
+looks like a success. The key exists through the
+`patches/kindex-extract-prompt-budget.patch` entry in the repo flake, which adds
+it with a default of 1000; the setting has no effect unless that patch is applied
+AND the key is set. The patch is a temporary workaround for upstream
+wandercom/kindex and is to be dropped once an upstream release raises the
+default. A correct extraction generates about 1900 output tokens, roughly 28
+seconds of model time and 34 seconds of wall time, which is why
+`compactChunkTimeoutMs` is 90000.
+
 ## Prerequisites
 
 - `kin` on PATH (or `kinBin` set). Subprocesses spawn via `Bun.spawn`, so the
