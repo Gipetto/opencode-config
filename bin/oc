@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# managed by opencode-config, install with ./install.sh from the repo root
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+REPO="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+OPENCODE_PASSWORD="$(cat "$REPO/secrets/opencode-server-password")"
+if [ -z "${OPENCODE_PASSWORD}" ]; then
+  echo "oc: empty password from secrets/opencode-server-password" >&2
+  exit 1
+fi
+export OPENCODE_PASSWORD
+
+exec opencode --server http://127.0.0.1:4096 "$@"

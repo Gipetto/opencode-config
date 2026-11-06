@@ -15,7 +15,7 @@ REPO="$(cd "$(dirname "$SELF")" && pwd)"
 BINDIR="$HOME/.local/bin"
 mkdir -p "$BINDIR"
 
-CMDS=(kin kin-mcp gitnexus sim advocate meditate pact signet-eval)
+CMDS=(kin kin-mcp gitnexus sim advocate meditate pact signet-eval opencoded oc)
 
 for cmd in "${CMDS[@]}"; do
   ln -sf "$REPO/bin/$cmd" "$BINDIR/$cmd"

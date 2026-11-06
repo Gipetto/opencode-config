@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# managed by opencode-config, install with ./install.sh from the repo root
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+REPO="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+# retire any auto-spawned managed service so this server is the only one
+opencode service stop 2>/dev/null || true
+trap 'opencode service stop 2>/dev/null || true' EXIT
+
+OPENCODE_SERVER_PASSWORD="$(cat "$REPO/secrets/opencode-server-password")"
+if [ -z "${OPENCODE_SERVER_PASSWORD}" ]; then
+  echo "opencoded: empty password from secrets/opencode-server-password" >&2
+  exit 1
+fi
+export OPENCODE_SERVER_PASSWORD
+
+exec opencode serve --hostname 0.0.0.0 --port 4096
