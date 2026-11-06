@@ -102,7 +102,7 @@ removed only on `session.deleted`, after a successful drain.
 ## Options (defaults)
 
 `kinBin` "kin" · `configPath` null · `env` {} · `chunkChars` 3400 ·
-`chunkTimeoutMs` 120000 · `compactChunkTimeoutMs` 10000 · `sweepStaleMs`
+`chunkTimeoutMs` 120000 · `compactChunkTimeoutMs` 90000 · `sweepStaleMs`
 43200000 (12h) · `toolOutputChars` 1500 · `dropRecentTurns` 2 ·
 `captureOnIdle` true · `minCaptureChars` 6000 · `maxChunks` 8 ·
 `captureOnCompact` true · `maxFlushChunks` 3 · `contextLevel` "summarized" ·

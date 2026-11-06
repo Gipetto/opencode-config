@@ -274,7 +274,7 @@
           "OMLX_KEY": "{file:secrets/omlx-key}"
         },
         "debug": true,
-        "compactChunkTimeoutMs": 40000
+        "compactChunkTimeoutMs": 90000
       }
     ],
     "./plugins/kindex-memory"
