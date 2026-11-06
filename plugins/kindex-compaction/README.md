@@ -60,7 +60,16 @@ Serialization covers user text, assistant text, tool calls and results
 State root is `$XDG_STATE_HOME`, else `~/.local/state`. The directory is mode
 0700 and journals are 0600. Content: `{ version: 1, session, messages:
 [{ key, id, topic, source, chunks: [{ body, state, attempts, nextAttemptAt,
-... }] }] }`.
+kinExit, kinDurationMs, kinStaged, lastAttemptAt, lastError, ... }] }] }`.
+
+Per-chunk fields written after every `kin` attempt: `kinExit` (process exit
+code, null if the process could not start), `kinDurationMs` (wall time of the
+attempt), `kinStaged` (nodes reported by the `# Kindex: staged N` stdout line,
+null when the line is absent). To count chunk states across all journals:
+
+```sh
+find "$XDG_STATE_HOME/opencode/kindex-compaction" -name '*.json' -exec jq -r '.messages[].chunks[].state' {} + | sort | uniq -c
+```
 
 ## Durability (write-ahead)
 
@@ -72,9 +81,14 @@ which chunk was in flight.
 ## Chunk lifecycle
 
 - `pending` -> `inflight` (journaled before the kin call).
-- Success -> `unknown`. Never retried; treated as probably-applied. The message
-  body is garbage-collected from the journal once all of the message's chunks
-  are `unknown`.
+- Success with a `# Kindex: staged N` line -> `unknown`. Never retried; treated
+  as probably-applied. The message body is garbage-collected from the journal
+  once all of the message's chunks are `unknown`.
+- Success with no staged line -> `empty`. Never retried: a zero-staged result is
+  deterministic, and retrying it burns 17-20 seconds of a single-resident model.
+  The message body is retained rather than garbage-collected, so the payload can
+  be inspected or replayed by hand. At most 200 message payloads holding `empty`
+  chunks are kept per journal, oldest dropped first.
 - Failure -> back to `pending` with `lastError` and exponential backoff
   (2^attempts seconds, capped at 1 hour); the flush pass stops at that chunk
   until `nextAttemptAt`.
@@ -113,7 +127,9 @@ removed only on `session.deleted`, after a successful drain.
   Until fixed, this plugin's capture is an effective no-op.
 - **Success is unverified.** A chunk "succeeds" on kin exit code 0 alone; the
   `unknown` state means applied-but-unconfirmed and is never retried. The
-  caveat above makes this worse.
+  caveat above makes this worse. A successful run that reports no staged count
+  is now recorded as `empty` instead, so the two are distinguishable in the
+  journal.
 - **Final-two-turns loss.** `dropRecentTurns` (default 2) excludes the last
   two user turns from idle capture; they enter only on the compaction and
   stale-sweep paths. A session that ends without a later idle, compaction, or

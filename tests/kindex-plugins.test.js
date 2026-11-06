@@ -15,7 +15,9 @@ process.env.XDG_STATE_HOME = join(root, "state")
 process.env.KINDEX_POLICY_PATH = join(root, "policy.md")
 await writeFile(process.env.KINDEX_POLICY_PATH, "policy one")
 
-const [{ serializeMessage, messageKey, needsFlush, createJournalStore, flushJournal }, { default: memoryPlugin }] = await Promise.all([
+const [{
+  serializeMessage, messageKey, needsFlush, createJournalStore, flushJournal, flushStoredJournal,
+}, { default: memoryPlugin }] = await Promise.all([
   import("../plugins/kindex-compaction/index.js"),
   import("../plugins/kindex-memory/index.js"),
 ])
@@ -849,4 +851,149 @@ test("sweeps stale startup journals for this location and leaves fresh ones alon
   } finally {
     delete globalThis.Bun
   }
+})
+
+test("parses the staged count from real kin stdout", async () => {
+  const projectDirectory = join(root, "staged-stdout-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  await mkdir(store.dir, { recursive: true, mode: 0o700 })
+  const payload = "payload staged through real stdout"
+  const text = `session\n\n${payload}`
+  await writeFile(
+    join(store.dir, `${createHash("sha256").update("spawn-staged-session").digest("hex")}.json`),
+    JSON.stringify({
+      version: 1,
+      messages: [{
+        key: messageKey({ id: "u1" }, text), id: "u1", source: text, topic: "session",
+        chunks: [{ body: payload, state: "pending", attempts: 0, nextAttemptAt: 0 }],
+      }],
+      session: "spawn-staged-session",
+    }),
+  )
+
+  const spawned = []
+  const feed = eventFeed()
+  const readable = (value) => new ReadableStream({
+    start(controller) {
+      if (value) controller.enqueue(new TextEncoder().encode(value))
+      controller.close()
+    },
+  })
+  globalThis.Bun = {
+    spawn(args, spawnOptions) {
+      spawned.push({ args, input: new TextDecoder().decode(spawnOptions.stdin) })
+      return {
+        stdout: readable("# Kindex: staged 3\nhook output"),
+        stderr: readable(""),
+        exited: Promise.resolve(0),
+        kill() {},
+      }
+    },
+  }
+  const ctx = {
+    options: { ...options, prime: false, chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000 },
+    location: { directory: projectDirectory, workspaceID: "ws-staged", project: { directory: projectDirectory } },
+    session: {
+      async context() { return [] },
+      async hook() {},
+    },
+    event: { subscribe: (opts) => feed.subscribe(opts) },
+  }
+
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    let journal = await store.read("spawn-staged-session")
+    for (let i = 0; i < 100 && !("kinStaged" in journal.messages[0].chunks[0]); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      journal = await store.read("spawn-staged-session")
+    }
+    const chunk = journal.messages[0].chunks[0]
+
+    assert.equal(chunk.kinStaged, 3)
+    assert.equal(spawned.length, 1)
+    assert.equal(spawned[0].input, text)
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("records the staged count reported by kin on the chunk", async () => {
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-staged")
+  const first = await flushJournal({
+    store, sessionID: "staged-session",
+    messages: [userMessage("u1", "payload reporting a staged count")],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 42, staged: 3 }),
+  })
+  const chunk = first.journal.messages[0].chunks[0]
+
+  assert.equal(chunk.kinStaged, 3)
+  assert.equal(chunk.kinExit, 0)
+  assert.equal(chunk.kinDurationMs, 42)
+  assert.equal(chunk.state, "unknown")
+})
+
+test("marks a successful run without a staged line empty", async () => {
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-empty-state")
+  const first = await flushJournal({
+    store, sessionID: "empty-state-session",
+    messages: [userMessage("u1", "payload kin accepts but stages nothing")],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 17_000, staged: null }),
+  })
+  const chunk = first.journal.messages[0].chunks[0]
+
+  assert.equal(chunk.state, "empty")
+  assert.equal(chunk.kinStaged, null)
+})
+
+test("retains the payload of an empty chunk through later flushes", async () => {
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-empty-retain")
+  const payload = "payload that must survive the prune pass"
+  await flushJournal({
+    store, sessionID: "empty-retain-session", messages: [userMessage("u-old", payload)],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: null }),
+  })
+
+  const boundary = { id: "c1", type: "compaction", status: "completed", summary: "new window" }
+  await flushJournal({
+    store, sessionID: "empty-retain-session",
+    messages: [boundary, userMessage("u-new", "after boundary")],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+  const retained = (await store.read("empty-retain-session")).messages.find((item) => item.id === "u-old")
+
+  assert.equal(retained.chunks[0].state, "empty")
+  assert.equal(retained.source.includes(payload), true)
+  assert.equal(retained.chunks[0].body.includes(payload), true)
+})
+
+test("does not retry an empty chunk on a subsequent flush", async () => {
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-empty-retry")
+  const messages = [userMessage("u1", "already reported empty")]
+  const first = await flushJournal({
+    store, sessionID: "empty-retry-session", messages,
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: null }),
+  })
+  assert.equal(first.journal.messages[0].chunks[0].state, "empty")
+
+  const calls = []
+  const second = await flushJournal({
+    store, sessionID: "empty-retry-session", messages,
+    options, includeRecent: true, now: Date.now() + 60_000,
+    runKin: async (text) => { calls.push(text); return { status: "success", exit: 0, durationMs: 10, staged: 1 } },
+  })
+  const tail = await flushStoredJournal({
+    store, sessionID: "empty-retry-session", options,
+    runKin: async (text) => { calls.push(text); return { status: "success", exit: 0, durationMs: 10, staged: 1 } },
+  })
+
+  assert.equal(second.attempted, 0)
+  assert.equal(tail.attempted, 0)
+  assert.equal(calls.length, 0)
+  assert.equal((await store.read("empty-retry-session")).messages[0].chunks[0].state, "empty")
 })

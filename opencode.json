@@ -273,7 +273,8 @@
           "ANTHROPIC_BASE_URL": "http://localhost:8000",
           "OMLX_KEY": "{file:secrets/omlx-key}"
         },
-        "debug": true
+        "debug": true,
+        "compactChunkTimeoutMs": 40000
       }
     ],
     "./plugins/kindex-memory"

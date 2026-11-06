@@ -68,6 +68,16 @@ const emptyJournal = () => ({ version: 1, messages: [] })
 // left behind by earlier processes do, and they are all written through here.
 const liveSessions = new Set()
 
+const STAGED_LINE = /# Kindex: staged (\d+)/
+const MAX_EMPTY_PAYLOADS = 200
+const parseStaged = (stdout) => {
+  const match = STAGED_LINE.exec(stdout || "")
+  return match ? Number(match[1]) : null
+}
+const stateAfter = (result) => result.status === "failure"
+  ? "pending"
+  : result.staged === null ? "empty" : "unknown"
+
 export const createJournalStore = (root, projectKey) => {
   const dir = join(root, "opencode", "kindex-compaction", hash(projectKey))
   const fileFor = (sessionID) => join(dir, `${hash(sessionID)}.json`)
@@ -165,6 +175,24 @@ export const needsFlush = (messages, journal, options) => {
   return added >= options.minCaptureChars
 }
 
+const recordAttempt = (chunk, result, now) => {
+  chunk.kinExit = result.exit ?? null
+  chunk.kinDurationMs = result.durationMs ?? null
+  chunk.kinStaged = result.staged ?? null
+  chunk.lastAttemptAt = now
+}
+
+const trimEmptyPayloads = (journal) => {
+  const held = []
+  for (const item of journal.messages) {
+    if (item.chunks.some((chunk) => chunk.state === "empty")) held.push(item)
+  }
+  for (const item of held.slice(0, Math.max(0, held.length - MAX_EMPTY_PAYLOADS))) {
+    delete item.source
+    for (const chunk of item.chunks) delete chunk.body
+  }
+}
+
 export const flushJournal = async ({ store, sessionID, messages, options, runKin, includeRecent = false, now = Date.now() }) => {
   const journal = await store.read(sessionID)
   for (const item of journal.messages) {
@@ -211,19 +239,20 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
       await store.write(sessionID, journal)
       attempted++
       const result = await runKin(`${item.topic}\n\n${chunk.body}`, chunkTimeoutMs)
-      if (result.status === "success") {
-        chunk.state = "unknown"
-        chunk.lastAttemptAt = now
-      } else {
+      recordAttempt(chunk, result, now)
+      if (result.status === "failure") {
         chunk.state = "pending"
         chunk.lastError = result.error || result.status
         chunk.nextAttemptAt = now + Math.min(3600000, 1000 * 2 ** Math.min(chunk.attempts, 12))
         await store.write(sessionID, journal)
         return { attempted, failed: true, journal }
       }
+      chunk.state = stateAfter(result)
       await store.write(sessionID, journal)
     }
   }
+  trimEmptyPayloads(journal)
+  await store.write(sessionID, journal)
   return { attempted, failed: false, journal }
 }
 
@@ -245,23 +274,25 @@ export const flushStoredJournal = async ({ store, sessionID, options, runKin, no
       attempted++
       const result = await runKin(`${item.topic}\n\n${chunk.body}`,
         options.compactChunkTimeoutMs ?? options.chunkTimeoutMs)
-      if (result.status === "success") {
-        chunk.state = "unknown"
-        chunk.lastAttemptAt = now
-      } else {
+      recordAttempt(chunk, result, now)
+      if (result.status === "failure") {
         chunk.state = "pending"
         chunk.lastError = result.error || result.status
         chunk.nextAttemptAt = now + Math.min(3600000, 1000 * 2 ** Math.min(chunk.attempts, 12))
         await store.write(sessionID, journal)
         return { attempted, failed: true }
       }
+      chunk.state = stateAfter(result)
       await store.write(sessionID, journal)
     }
   }
+  trimEmptyPayloads(journal)
+  await store.write(sessionID, journal)
   return { attempted, failed: false }
 }
 
 const run = async (bin, args, input, timeoutMs, cwd, env) => {
+  const startedAt = Date.now()
   let proc
   try {
     proc = Bun.spawn([bin, ...args], {
@@ -270,7 +301,7 @@ const run = async (bin, args, input, timeoutMs, cwd, env) => {
       stdout: "pipe", stderr: "pipe",
     })
   } catch (error) {
-    return { status: "failure", error: error.message }
+    return { status: "failure", error: error.message, exit: null, durationMs: Date.now() - startedAt, staged: null }
   }
   let timedOut = false
   const timer = setTimeout(() => {
@@ -281,13 +312,17 @@ const run = async (bin, args, input, timeoutMs, cwd, env) => {
     const [stdout, stderr, code] = await Promise.all([
       new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
     ])
+    const succeeded = !timedOut && code === 0
     return {
-      status: !timedOut && code === 0 ? "success" : "failure",
+      status: succeeded ? "success" : "failure",
       stdout: stdout.trim(),
       error: timedOut ? "timed out" : code !== 0 ? stderr.trim() || `exit ${code}` : "",
+      exit: code,
+      durationMs: Date.now() - startedAt,
+      staged: succeeded ? parseStaged(stdout) : null,
     }
   } catch (error) {
-    return { status: "failure", error: error.message }
+    return { status: "failure", error: error.message, exit: null, durationMs: Date.now() - startedAt, staged: null }
   } finally {
     clearTimeout(timer)
   }
@@ -307,6 +342,12 @@ export default Plugin.define({
     const note = (...args) => { if (opt.debug) console.error("[kindex]", ...args) }
     const kinArgs = (args) => opt.configPath ? [...args, "--config", opt.configPath] : args
     const runKin = (input, timeoutMs = opt.chunkTimeoutMs) => run(opt.kinBin, kinArgs(["compact-hook"]), input, timeoutMs, directory, opt.env)
+    const kinAttempt = async (input, timeoutMs) => {
+      const result = await runKin(input, timeoutMs)
+      note("kin compact-hook", "exit", result.exit, "duration", result.durationMs,
+        "staged", result.staged, "state", stateAfter(result))
+      return result
+    }
     const serialize = (sessionID) => ctx.session.context({ sessionID })
     const enqueue = (sessionID, task) => {
       const previous = queues.get(sessionID) || Promise.resolve()
@@ -316,7 +357,7 @@ export default Plugin.define({
     }
     const capture = (sessionID, includeRecent) => enqueue(sessionID, async () => {
       const messages = await serialize(sessionID)
-      const result = await flushJournal({ store, sessionID, messages, options: opt, runKin, includeRecent })
+      const result = await flushJournal({ store, sessionID, messages, options: opt, runKin: kinAttempt, includeRecent })
       if (result.failed) console.warn(`[kindex] capture failed for session ${sessionID}; source remains in the private journal`)
       note("capture", sessionID, result.attempted, result.failed ? "failed" : "attempted")
       return { messages, failed: result.failed }
@@ -390,7 +431,7 @@ export default Plugin.define({
               location.workspaceID !== ctx.location.workspaceID) continue
             try {
               const { failed } = await enqueue(sessionID, () =>
-                flushStoredJournal({ store, sessionID, options: opt, runKin }))
+                flushStoredJournal({ store, sessionID, options: opt, runKin: kinAttempt }))
               if (failed) {
                 console.warn(`[kindex] tail capture failed for deleted session ${sessionID}; journal retained`)
                 continue
