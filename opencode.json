@@ -220,16 +220,6 @@
     },
     {
       "action": "external_directory",
-      "resource": "~/Projects/quizstreak*",
-      "effect": "allow"
-    },
-    {
-      "action": "external_directory",
-      "resource": "~/Projects/quizstreak*/**",
-      "effect": "allow"
-    },
-    {
-      "action": "external_directory",
       "resource": "~/.config/opencode/skills/**/references/*",
       "effect": "allow"
     },
