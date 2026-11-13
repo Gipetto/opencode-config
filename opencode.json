@@ -29,15 +29,6 @@
       ],
       "type": "local"
     },
-    "postgres": {
-      "command": [
-        "npx",
-        "-y",
-        "@modelcontextprotocol/server-postgres",
-        "{file:secrets/postgres-url}"
-      ],
-      "type": "local"
-    },
     "sentry": {
       "oauth": {},
       "type": "remote",

@@ -52,8 +52,6 @@ subagents.
 - **gitnexus** — code knowledge graph: impact analysis, execution-flow
   queries, change detection.
 - **kindex** — persistent knowledge graph for durable memory across sessions.
-- **postgres** — schema and data queries; connects with the URL in
-  `secrets/postgres-url`.
 - **sentry** — remote server (OAuth) for error and issue triage.
 - **svelte** — official Svelte 5 / SvelteKit documentation and autofixer.
 
