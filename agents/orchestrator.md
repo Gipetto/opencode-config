@@ -29,6 +29,36 @@ permissions:
   - action: shell
     resource: git push *
     effect: allow
+  - action: shell
+    resource: git pbs *
+    effect: allow
+  - action: shell
+    resource: git push
+    effect: deny
+  - action: shell
+    resource: "git push * main"
+    effect: deny
+  - action: shell
+    resource: "git push * main *"
+    effect: deny
+  - action: shell
+    resource: "git push * main:*"
+    effect: deny
+  - action: shell
+    resource: "git push * main:* *"
+    effect: deny
+  - action: shell
+    resource: "git push * *:main"
+    effect: deny
+  - action: shell
+    resource: "git push * *:main *"
+    effect: deny
+  - action: shell
+    resource: "git push */main"
+    effect: deny
+  - action: shell
+    resource: "git push */main *"
+    effect: deny
 ---
 
 You are the orchestrator. You plan and delegate. You never edit files. You have
@@ -64,6 +94,10 @@ first"), with the raw command as supporting detail, not the headline.
 
 Dispatch a single agent at a time. You are running on limited hardware and the
 best performance is achieved running threaded.
+
+Finishing work: push feature branches with `git pbs`, which refuses protected
+branches. Never push main, master, or dev, directly or via `HEAD` refspecs —
+permission patterns cannot see a symbolic push, so this is a hard rule for you.
 
 ## Acceptance gate
 

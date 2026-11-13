@@ -184,6 +184,26 @@
       "effect": "deny"
     },
     {
+      "action": "shell",
+      "resource": "git pb *",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git pbu *",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git pbs *",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git -C * push *",
+      "effect": "deny"
+    },
+    {
       "action": "external_directory",
       "resource": "*",
       "effect": "ask"
@@ -408,6 +428,67 @@
   },
   "model": "omlx/Qwen3.8-Flash-Next-oQ4e-mtp",
   "default_agent": "orchestrator",
+  "agents": {
+    "build": {
+      "permissions": [
+        {
+          "action": "shell",
+          "resource": "git push *",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git pbs *",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git push",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push * main",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push * main *",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push * main:*",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push * main:* *",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push * *:main",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push * *:main *",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push */main",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git push */main *",
+          "effect": "deny"
+        }
+      ]
+    }
+  },
   "experimental": {
     "subagent_depth": 1
   },
