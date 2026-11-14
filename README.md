@@ -81,6 +81,11 @@ unattended runs block spinners instead of stalling on approvals—while
 paraphrase-level thrashing remains guarded only by worker step budgets and the
 kindex checkpoint discipline.
 
+Repo-specific verification commands belong in `<repo>/.opencode/opencode.json`
+under `agents.verify.permissions`, which merges with the global rules in
+`agents/verify.md` (measured v2.2.5). Repos with non-standard script names
+(e.g. quizstreak's `sync`) must declare them there.
+
 ## Skills
 
 Available skills: gitnexus-exploring, gitnexus-impact-analysis,

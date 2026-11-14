@@ -8,6 +8,15 @@ permissions:
   - action: edit
     resource: "*"
     effect: deny
+  - action: external_directory
+    resource: "/opt/*"
+    effect: deny
+  - action: external_directory
+    resource: "/usr/*"
+    effect: deny
+  - action: external_directory
+    resource: "/etc/*"
+    effect: deny
   - action: shell
     resource: "*"
     effect: deny
@@ -34,9 +43,6 @@ permissions:
     effect: allow
   - action: shell
     resource: "make test *"
-    effect: allow
-  - action: shell
-    resource: "make ship *"
     effect: allow
   - action: shell
     resource: "make check *"
@@ -102,25 +108,19 @@ permissions:
     resource: "gh *"
     effect: deny
   - action: shell
-    resource: "npm run *"
+    resource: "npm run test*"
     effect: allow
   - action: shell
-    resource: "npm *"
+    resource: "npm run check*"
     effect: allow
   - action: shell
-    resource: "npx *"
+    resource: "npm run lint*"
     effect: allow
   - action: shell
-    resource: "yarn *"
+    resource: "npm run typecheck*"
     effect: allow
   - action: shell
-    resource: "pnpm *"
-    effect: allow
-  - action: shell
-    resource: "make *"
-    effect: allow
-  - action: shell
-    resource: "node *"
+    resource: "npm run build*"
     effect: allow
   - action: shell
     resource: "vitest *"
@@ -151,6 +151,10 @@ If a failure looks unrelated to the files that were changed, say so. Pre-existin
 breakage is not this change's problem.
 
 End with one line: PASS or FAIL, and if FAIL, the single most important reason.
+
+If a check command required by the brief is denied by permissions, report the
+denied command as a missing permission and stop — do not improvise alternatives
+or probe other directories for the tool.
 
 If a brief cites a Kindex node, pull it with `kindex_show` before editing; if
 the node and the brief disagree, stop and report the conflict — do not pick a
