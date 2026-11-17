@@ -1,6 +1,10 @@
 ---
 description: Adversarial reviewer for a plan, design, or committed change. Generates falsifiable objections, optionally through a persona skill. Read-only; findings go to refute before anyone acts.
 mode: subagent
+# A second model family catches errors the resident model shares with the
+# author. Only switch if both models fit in memory together; otherwise each
+# dispatch forces a model swap.
+# model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
 model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#think
 steps: 20
 permissions:

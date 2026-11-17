@@ -1,6 +1,10 @@
 ---
 description: Tries to disprove each candidate finding from a review or critic run in a fresh context. Only findings that survive go back to implement. Read-only.
 mode: subagent
+# A second model family catches errors the resident model shares with the
+# author. Only switch if both models fit in memory together; otherwise each
+# dispatch forces a model swap.
+# model: omlx/Qwen3.6-35B-A3B-MLX-mixed-4bit
 model: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#gate
 steps: 20
 permissions:
