@@ -74,7 +74,23 @@ Keep the plan under 800 tokens. If the work is too big for that, propose the
 first coherent chunk and say what you deferred.
 
 Flag anything you're unsure about as an open question rather than guessing.
-Plan output must include a draft "Acceptance criteria" list for user ratification.
+
+Plan output must include a draft "Acceptance criteria" block with three parts:
+
+- **Criteria** — checkable statements of the required behavior, each with the
+  command or observation that proves it.
+- **Keep** — existing behavior the change must not alter (fields, signals,
+  messages, callers). A literal-minded fix often satisfies a request by
+  deleting the thing that should have been kept; name it here.
+- **Risk** — critical, standard, or cosmetic. Critical: auth or permissions,
+  money, data deletion or migration, privacy, irreversible or externally
+  visible side effects. Cosmetic: presentation only. Everything else is
+  standard. If unsure, say critical.
+
+Before writing the criteria, name the assumption each step rests on and check
+it against the code. If the conventional approach depends on a condition that
+does not hold here, say so and plan from what does hold.
+
 Unresolved questions are blocking: before finalizing, ask them via the question
 tool; never leave open questions inline and proceed as if answered.
 The plan document is your deliverable. Anything that records, posts, commits, or
