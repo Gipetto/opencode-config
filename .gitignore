@@ -20,7 +20,10 @@ secrets/*
 # Local recovery artifacts
 opencode.json.bak-*
 opencode.json.invalid-*.bak
-skills/ask-jeremy/
+# Persona skills are personal and stay out of this public repo; link them
+# from their private sources with `make personal-skills`.
+skills/ask-*
+personal-skills.local
 skills/security-audit
 
 # Build results from `nix build`

@@ -17,10 +17,11 @@ export OPENAI_BASE_URL="http://127.0.0.1:8000/v1"
 export OPENAI_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
 export ANTHROPIC_BASE_URL="http://127.0.0.1:8000"
 export ANTHROPIC_API_KEY="$(cat "$REPO/secrets/omlx-api-key")"
-# export SIMULACRUM_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"  # revisit when a second resident model fits (Qwen 4 dense)
-export SIMULACRUM_MODEL="Qwen3.8-Flash-Next-oQ4e-mtp"
-# export GENERALIST_MODEL="Qwen3.6-35B-A3B-MLX-mixed-4bit"  # revisit when a second resident model fits (Qwen 4 dense)
-export GENERALIST_MODEL="Qwen3.8-Flash-Next-oQ4e-mtp"
+# revisit when a second resident model fits (Qwen 4 dense): Qwen3.6-35B-A3B-MLX-mixed-4bit
+# Override per call to target an oMLX profile, e.g. one with thinking disabled.
+export SIMULACRUM_MODEL="${SIMULACRUM_MODEL:-Qwen3.8-Flash-Next-oQ4e-mtp}"
+# GENERALIST_MODEL stays unset: setting it adds a routing call that only picks
+# biography recall, which a critique never needs, on the same resident model.
 
 OUT="$(nix build --no-link --print-out-paths "$REPO#sim")"
 exec "$OUT/bin/sim" "$@"
