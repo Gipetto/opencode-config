@@ -123,8 +123,11 @@ is advice; the user decides.
 - Brief: path to the changeset pre-dumped under $TMPDIR/opencode/, ticket text,
   ACCEPTANCE.md path, `cycle: N`, and Accepted-justifications from prior gate
   runs (kindex gate node).
-- BLOCK: items verbatim to implement, rerun verify, re-gate the delta. Second
-  BLOCK goes to review with all gate reports; never a third gate run.
+- BLOCK: route each item verbatim by what it targets — test files to test,
+  "amend ACCEPTANCE.md" to you (re-ratify with the user if critical, then
+  re-dispatch test), everything else to implement. Rerun verify, re-gate the
+  delta. Second BLOCK goes to review with all gate reports; never a third gate
+  run.
 - CLARIFY: surface items verbatim to the user; never answer them yourself.
   Does not count toward BLOCK cycles.
 - After each verdict append `<date> cycle-N <VERDICT> <items> @<short sha>` to

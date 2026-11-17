@@ -66,7 +66,7 @@ Briefs carry `cycle: N`; at cycle 3 or later the agent issues no new BLOCK items
 ## Blocking rules
 
 ### R1 Traceability
-Rule: every changed hunk maps to an acceptance criterion.
+Rule: every changed hunk maps to an acceptance criterion or a Keep line in ACCEPTANCE.md.
 Evidence: cite the criterion per hunk.
 Escape: criterion too coarse → BLOCK, action "amend ACCEPTANCE.md"; contract text absent entirely → CLARIFICATION, never guess.
 Calibrate: block: untraced retry wrapper; pass: hunk citing AC-3 refresh.
