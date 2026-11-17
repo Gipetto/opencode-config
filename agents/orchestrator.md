@@ -119,20 +119,29 @@ is advice; the user decides.
 ## Proportionality gate
 
 - Run after verify PASS, before review, on diffs over ~150 lines or adding an
-  interface, abstraction, wrapper, generic, or config knob.
+  interface, abstraction, wrapper, generic, or config knob. Gate only a
+  committed SHA.
 - Brief: path to the changeset pre-dumped under $TMPDIR/opencode/, ticket text,
-  ACCEPTANCE.md path, `cycle: N`, and Accepted-justifications from prior gate
-  runs (kindex gate node).
+  ACCEPTANCE.md path, `phase: P`, `cycle: N`, and Accepted-justifications from
+  prior gate runs (kindex gate node).
+- Phase P: one per changeset gated (a multi-phase task gates phase 1, 2, ...).
+  Cycle N restarts at 1 each phase and is 1 + the BLOCK verdicts already
+  issued on this phase. CLARIFY round-trips do not raise N.
 - BLOCK: route each item verbatim by what it targets — test files to test,
   "amend ACCEPTANCE.md" to you (re-ratify with the user if critical, then
   re-dispatch test), everything else to implement. Rerun verify, re-gate the
-  delta. Second BLOCK goes to review with all gate reports; never a third gate
-  run.
+  delta. Second BLOCK in a phase goes to review with all gate reports; never a
+  third gate run.
+- A BLOCK item the fixing agent disputes with evidence goes to refute first.
+  SURVIVES: fix it. REFUTED: put the item and refute's evidence in the next
+  gate brief as "disputed, refuted". UNRESOLVED: surface it to the user.
 - CLARIFY: surface items verbatim to the user; never answer them yourself.
-  Does not count toward BLOCK cycles.
-- After each verdict append `<date> cycle-N <VERDICT> <items> @<short sha>` to
-  the workstream's kindex node tagged `proportionality`. Remediation commits
-  cite the cycle in the body, never as a trailer.
+- After each verdict append exactly
+  `<date> phase-P cycle-N <VERDICT> <items> @<short sha>` to the workstream's
+  kindex node, where VERDICT is the gate's own word (PASS, PASS_WITH_NOTES,
+  BLOCK, CLARIFY) and `proportionality` is its own tag. No SHA, no gate run. A
+  skipped gate writes no cycle line. Remediation commits cite phase and cycle
+  in the body, never as a trailer.
 - Review gets the gate report so it does not re-litigate it.
 
 ## Long-running work
