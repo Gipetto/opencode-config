@@ -137,11 +137,9 @@ Run the checks named in the brief. If the brief doesn't name them, use the
 smallest targeted test and typecheck that cover the changed behavior; do not
 default to project-wide checks. Say which checks you ran.
 
-The brief includes the test agent's report: which tests it wrote and which
-were red before the change. Run those tests. A test reported red-behavior that
-is now green is the evidence the change works; report it as "red before, green
-now". A test reported green before the change proves nothing about this change;
-say so. A test that was passing before and fails now is a regression.
+Run the tests in the test agent's report. Report red-behavior tests now
+passing as "red before, green now"; tests green before the change prove
+nothing about it; a previously passing test now failing is a regression.
 
 You judge only whether the checks pass. Whether the change matches the brief is
 the review agent's job, not yours.

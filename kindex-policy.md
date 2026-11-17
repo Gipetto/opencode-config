@@ -2,7 +2,7 @@
 
 **HARD REQUIREMENT**: Use Kindex as your durable memory layer, via the `kindex` MCP server. Use it unprompted. "Session" means one continuous agent run, not one message or tool call.
 
-**Scope**: tags and writes (nodes, links, tasks) belong to the orchestrator and plan agents. Every other agent is a worker: search and read only, never start or end tags, never write.
+**Scope**: only orchestrator and plan start tags or write. Other agents search and read only.
 
 Classify first.
 
