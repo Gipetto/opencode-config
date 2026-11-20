@@ -2,6 +2,8 @@
 
 **HARD REQUIREMENT**: Use Kindex as your durable memory layer, via the `kindex` MCP server. Use it unprompted. "Session" means one continuous agent run, not one message or tool call.
 
+**Scope**: only orchestrator and plan start tags or write. Other agents search and read only.
+
 Classify first.
 
 **Trivial** (answerable from current context or one small read): follow-ups, clarifications, corrections, status, yes/no, tool-capability questions.

@@ -3,9 +3,15 @@
 A local-first OpenCode configuration. All models run on omlx, a local MLX
 inference server (`http://127.0.0.1:8000/v1`); no cloud model providers are
 in active use. The setup drives a multi-agent workflow: an orchestrator
-delegates to planning, implementation, verification, proportionality, and
-review agents, and the user ratifies acceptance criteria and approves anything
-destructive.
+delegates to planning, test, implementation, verification, proportionality,
+review, critic, and refute agents, and the user ratifies acceptance criteria
+for critical work and approves anything destructive.
+
+Every agent runs the same model, so agents share blind spots. Independence
+comes only from what each agent may see: tests are written from the acceptance
+criteria before the implementation exists, the implementer never sees the
+tests, and reviewers get the artifact and contract but not the reasoning behind
+it. Reports and PRs say so instead of claiming independent verification.
 
 ## Models
 
@@ -21,31 +27,42 @@ subagents.
 | --- | --- | --- | --- | --- |
 | orchestrator | primary | Plans, delegates, gathers context. Never edits files; dispatches one subagent at a time. | 500 | edit/write/patch deny; kindex and gitnexus allow |
 | plan | primary | Analyzes the codebase and proposes a stepwise plan with draft acceptance criteria. | 20 | edit deny; bash deny-by-default with read-only allowlist (git log/diff/show/status, grep, rg, head, tail, wc) |
-| implement | subagent | Applies a decided change to the exact files named in its brief. | 25 | edit/write allow, patch deny; bash deny; postgres and sentry deny |
-| verify | subagent | Runs tests, builds, and linters named in the brief; reports PASS/FAIL. Never fixes anything. | 20 | edit/write deny; bash allowlist (pytest, make test/ship/check, tsc, mypy, ruff, eslint, prettier --check, read-only git) with `gh *` deny and everything else deny |
+| test | subagent | Writes ACCEPTANCE.md and tests from the acceptance criteria before implementation; reports each test red for a named reason. | 30 | edit limited to ACCEPTANCE.md and test-file globs; bash test runners, read-only git, rg |
+| implement | subagent | Applies a decided change to the exact files named in its brief. Never writes or opens tests. | 25 | edit allow except ACCEPTANCE.md and test-file globs; bash typecheck/lint/build and read-only git only; postgres and sentry deny |
+| verify | subagent | Runs tests, builds, and linters named in the brief; reports which tests went red before, green now. Never fixes anything. | 20 | edit/write deny; bash allowlist (pytest, make test/check, tsc, mypy, ruff, eslint, prettier --check, read-only git) with `gh *` deny and everything else deny |
 | explore | subagent | Read-only codebase search via kindex, gitnexus, then grep. Returns path:line findings. | 12 | edit/write/bash deny; kindex and gitnexus allow |
 | proportionality | subagent | Proportionality gate: judges a verified diff against ticket/ACCEPTANCE.md for size, shape, and test quality; rules R1–R7; constant single-home (R7) with confidence routing (BLOCK=high only, CLARIFY halts to the human); never edits. | uncapped | edit/write deny; bash git diff/log/show allow with sha-verification rule; everything else deny; temperature 0.2 for judgment consistency |
-| review | subagent | Final gate: judges the diff against the brief and ACCEPTANCE.md, spot-checks claims. | 12 | edit/write deny; bash read-only allowlist (git diff/show/log/status, grep, rg, head, tail, wc, sort, uniq) |
+| review | subagent | Final gate: traces the committed SHA against ACCEPTANCE.md; PASS, FAIL, or HUMAN_REVIEW_REQUIRED for critical work. | 25 | edit/write deny; bash read-only allowlist (git diff/show/log/status, grep, rg, head, tail, wc, sort, uniq) |
+| critic | subagent | Adversarial reviewer for plans and clean critical results; can apply a persona skill. Temperature from the server default for varied samples. | 20 | edit deny; bash `sim`, read-only git, rg |
+| refute | subagent | Tries to disprove each review or critic finding in a fresh context; only survivors go back to implement. | 20 | edit deny; bash read-only git, rg |
 
 ## Workflow
 
 1. A user request lands on the orchestrator, which orients via kindex and
    gitnexus (explore only when those come up empty).
-2. plan produces a stepwise plan with a draft "Acceptance criteria" list.
-3. The orchestrator presents the criteria verbatim via the question tool and
-   waits for the user's explicit ratification.
-4. implement receives the brief with the confirmed criteria and writes
-   ACCEPTANCE.md first, verbatim, before any other edit.
-5. verify runs the acceptance commands within its allowlist and ends with
-   PASS or FAIL. FAIL sends the work back to implement.
-6. proportionality runs after verify PASS on diffs above ~150 lines or
-   introducing new abstractions. BLOCK routes its items verbatim back to
-   implement (max two cycles); CLARIFY surfaces its questions verbatim to
-   the user and re-dispatches with the answers. The report goes to review.
-7. review judges the diff against ACCEPTANCE.md — never the implementer's
-   summary — and its verdict is final.
-8. Commit and push are gated by user approval: `git push` and gh mutations
-   prompt.
+2. plan produces a stepwise plan with draft acceptance criteria, the
+   properties the change must keep, and a risk class (critical, standard,
+   cosmetic; unclassified counts as critical).
+3. For critical work or a real open question, the orchestrator presents the
+   criteria verbatim via the question tool and waits for ratification. For
+   standard and cosmetic work it records its interpretation and proceeds.
+   Critical plans also get two critic runs, filtered through refute.
+4. test writes ACCEPTANCE.md and the tests from the criteria, runs them, and
+   reports each one red for its stated reason.
+5. implement builds the behavior from the brief without seeing the tests.
+6. verify runs the tests and repo checks: red before, green now is the
+   evidence. FAIL goes back to implement as behavior and location.
+7. The orchestrator commits the candidate so later gates judge a fixed SHA.
+8. proportionality runs on diffs above ~150 lines or introducing new
+   abstractions. BLOCK routes its items verbatim back to implement (max two
+   cycles); CLARIFY surfaces its questions verbatim to the user.
+9. review traces the committed SHA against ACCEPTANCE.md. FAIL findings pass
+   through refute first; only survivors return to implement. Critical work
+   ends in HUMAN_REVIEW_REQUIRED: the user sees the evidence and decides. A
+   clean critical review also gets one critic run.
+10. After three correction rounds on one issue the orchestrator reassesses,
+    and escalates to the user by the fourth.
+11. Pushes go through `git pbs`; gh mutations prompt.
 
 ## MCP servers
 
@@ -73,7 +90,8 @@ source is no longer needed.
 
 Top-level `gh` reads (view, list, diff, checks, runs, searches) are allowed;
 gh mutations (`gh pr create/edit/close`) and everything else matching `gh*`
-require approval, as does `git push`. Secrets live in `secrets/` and are
+require approval. `git push` and its aliases are denied globally; only the
+orchestrator may push, through `git pbs`, and never to main. Secrets live in `secrets/` and are
 referenced with `{file:}` interpolation; the directory is gitignored and its
 contents are never printed. Repetition protection is native and strict:
 doom_loop (same tool call 3x with identical input) is denied, not prompted, so
@@ -90,15 +108,28 @@ under `agents.verify.permissions`, which merges with the global rules in
 
 Available skills: gitnexus-exploring, gitnexus-impact-analysis,
 gitnexus-debugging, gitnexus-refactoring, gitnexus-pr-review, gitnexus-cli,
-gitnexus-guide, rebase, merge, worktree, and open-pr. Portable
+gitnexus-guide, rebase, merge, worktree, and open-pr.
+
+Persona review skills (ask-jeremy, ask-devon, ask-shawn) are personal and live
+in private repositories, so this public repo never tracks them. List their
+absolute directories, one per line, in the gitignored `personal-skills.local`
+and run `make personal-skills` to symlink them into `skills/`. The critic agent
+applies them when a brief names one. ask-jeremy runs the vendored `sim` CLI,
+which talks to the same resident model; `bin/sim` leaves `GENERALIST_MODEL`
+unset to skip a routing call that critique never needs.
+
+Portable
 `SKILL.md` skills shared across tools live in `~/.agents/skills`;
 tool-specific ones live in `~/.config/opencode/skills`.
 
 ## AGENTS.md
 
-`AGENTS.md` carries the standing collaboration agreement: communication style,
-advisory-vs-implementation behavior, the acceptance contract, testing and PR
-rules, shell conventions, and how agents use kindex and GitNexus.
+`AGENTS.md` carries the standing agreement every agent reads: communication
+style, advisory-vs-implementation behavior, the acceptance contract, testing and
+PR rules, shell conventions, how agents use kindex and GitNexus, and worker
+limits. Orchestrator-only rules (delegation sizing, the workflow, risk classes,
+the proportionality gate, correction rounds, long-running checkpoints) live in
+`agents/orchestrator.md`, so workers on the local model do not carry them.
 
 ## Repo
 

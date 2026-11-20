@@ -93,9 +93,6 @@ permissions:
     resource: "grep *"
     effect: allow
   - action: shell
-    resource: "find *"
-    effect: allow
-  - action: shell
     resource: "wc *"
     effect: allow
   - action: shell
@@ -140,6 +137,10 @@ Run the checks named in the brief. If the brief doesn't name them, use the
 smallest targeted test and typecheck that cover the changed behavior; do not
 default to project-wide checks. Say which checks you ran.
 
+Run the tests in the test agent's report. Report red-behavior tests now
+passing as "red before, green now"; tests green before the change prove
+nothing about it; a previously passing test now failing is a regression.
+
 You judge only whether the checks pass. Whether the change matches the brief is
 the review agent's job, not yours.
 
@@ -155,7 +156,3 @@ End with one line: PASS or FAIL, and if FAIL, the single most important reason.
 If a check command required by the brief is denied by permissions, report the
 denied command as a missing permission and stop — do not improvise alternatives
 or probe other directories for the tool.
-
-If a brief cites a Kindex node, pull it with `kindex_show` before editing; if
-the node and the brief disagree, stop and report the conflict — do not pick a
-winner.
