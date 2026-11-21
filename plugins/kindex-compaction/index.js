@@ -68,7 +68,6 @@ const emptyJournal = () => ({ version: 1, messages: [] })
 const pendingChunks = (journal) =>
   journal.messages.reduce((total, item) => total + item.chunks.filter((chunk) => chunk.state === "pending").length, 0)
 
-const firstSeenAt = (chunk, item) => chunk.firstSeenAt ?? item.capturedAt ?? 0
 
 // Journals written by this process never need the startup sweep; only files
 // left behind by earlier processes do, and they are all written through here.
@@ -217,14 +216,12 @@ const recordAttempt = (chunk, result, now) => {
   chunk.lastAttemptAt = now
 }
 
-const trimEmptyPayloads = (journal, sessionID) => {
+const trimEmptyPayloads = (journal) => {
   const held = []
   for (const item of journal.messages) {
     if (item.chunks.some((chunk) => chunk.state === "empty")) held.push(item)
   }
-  const dropped = held.slice(0, Math.max(0, held.length - MAX_EMPTY_PAYLOADS))
-  if (dropped.length) console.warn(`[kindex] journal ${sessionID} trimmed ${dropped.length} empty payload(s)`)
-  for (const item of dropped) {
+  for (const item of held.slice(0, Math.max(0, held.length - MAX_EMPTY_PAYLOADS))) {
     delete item.source
     for (const chunk of item.chunks) delete chunk.body
   }
@@ -252,8 +249,7 @@ const abandonJournal = (journal, sessionID, options, now) => {
     for (const chunk of item.chunks) {
       if (chunk.state !== "pending" && chunk.state !== "inflight") continue
       pending.push(chunk)
-      const seen = firstSeenAt(chunk, item)
-      if (seen) oldest = Math.min(oldest, seen)
+      if (chunk.firstSeenAt) oldest = Math.min(oldest, chunk.firstSeenAt)
     }
   }
   if (!pending.length) return false
@@ -346,7 +342,7 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
       await store.write(sessionID, journal)
     }
   }
-  trimEmptyPayloads(journal, sessionID)
+  trimEmptyPayloads(journal)
   await store.write(sessionID, journal)
   return { attempted, failed: false, journal }
 }
@@ -460,7 +456,6 @@ export default Plugin.define({
     })
     const markCaptured = (sessionID, messages) => enqueue(sessionID, async () => {
       const journal = await store.read(sessionID)
-      const known = new Set(journal.messages.map((item) => item.key))
       const keys = new Set()
       for (const message of latestBoundary(messages)) {
         const text = serializeMessage(message)
@@ -474,10 +469,6 @@ export default Plugin.define({
       }
       if (marked) await store.write(sessionID, journal)
       note("watermark", sessionID, marked)
-    })
-    const purge = (sessionID) => purgeJournal({
-      store, sessionID, options: opt, enqueue,
-      now: Date.now(),
     })
     const contextBlock = async (topic) => {
       const args = ["context", "--topic", topic, "--level", opt.contextLevel, "--tokens", String(opt.contextTokens), "--format", "raw"]
