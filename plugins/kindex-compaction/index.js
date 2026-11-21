@@ -11,6 +11,7 @@ const DEFAULTS = {
   toolOutputChars: 1500, dropRecentTurns: 2,
   captureOnIdle: true, minCaptureChars: 6000, maxChunks: 8,
   captureOnCompact: true, maxFlushChunks: 3, contextLevel: "summarized",
+  abandonAfterMs: 604800000, abandonAfterChunks: 256,
   contextTokens: 800, contextTimeoutMs: 8000, trustedOnly: false,
   prime: true, primeTokens: 500, primeTimeoutMs: 5000, debug: false,
 }
@@ -64,9 +65,35 @@ export const chunkText = (text, size, maxChunks = Infinity) => {
 
 const emptyJournal = () => ({ version: 1, messages: [] })
 
+const pendingChunks = (journal) =>
+  journal.messages.reduce((total, item) => total + item.chunks.filter((chunk) => chunk.state === "pending").length, 0)
+
+const firstSeenAt = (chunk, item) => chunk.firstSeenAt ?? item.capturedAt ?? 0
+
 // Journals written by this process never need the startup sweep; only files
 // left behind by earlier processes do, and they are all written through here.
 const liveSessions = new Set()
+// A removed journal must stay removed: write() rewrites the whole file with no
+// existence check, so a flush holding a stale copy would resurrect it.
+const removedSessions = new Set()
+
+// The sweep replays week-old backlog through the LLM, so each location is swept once per
+// process: setup() runs on every session init, and re-replaying every init starves the LLM.
+const sweptLocations = new Set()
+export const sweepOnce = async ({ ctx, store }) => {
+  const locationKey = ctx.location?.directory ?? ""
+  if (sweptLocations.has(locationKey)) return { swept: false }
+  sweptLocations.add(locationKey)
+  const opt = { ...DEFAULTS, ...ctx.options }
+  const staleBefore = Date.now() - opt.sweepStaleMs
+  const journals = (await store.list()).sort((a, b) => a.mtimeMs - b.mtimeMs).slice(0, 50)
+  for (const { sessionID, mtimeMs } of journals) {
+    if (ctx.signal?.aborted) break
+    try { await ctx.capture(sessionID, mtimeMs < staleBefore) }
+    catch (error) { console.error("[kindex] sweep skipped", sessionID, error.message) }
+  }
+  return { swept: true }
+}
 
 const STAGED_LINE = /# Kindex: staged (\d+)/
 const MAX_EMPTY_PAYLOADS = 200
@@ -84,6 +111,7 @@ export const createJournalStore = (root, projectKey) => {
   return {
     dir,
     async read(sessionID) {
+      if (removedSessions.has(`${hash(projectKey)}:${sessionID}`)) return emptyJournal()
       try {
         const journal = JSON.parse(await readFile(fileFor(sessionID), "utf8"))
         if (journal.version !== 1 || !Array.isArray(journal.messages)) throw new Error("invalid journal")
@@ -94,6 +122,8 @@ export const createJournalStore = (root, projectKey) => {
       }
     },
     async write(sessionID, journal) {
+      const token = `${hash(projectKey)}:${sessionID}`
+      if (removedSessions.has(token)) return
       await mkdir(dir, { recursive: true, mode: 0o700 })
       await chmod(dir, 0o700)
       const file = fileFor(sessionID)
@@ -109,7 +139,7 @@ export const createJournalStore = (root, projectKey) => {
       await chmod(file, 0o600)
       const parent = await open(dirname(file), "r")
       try { await parent.sync() } finally { await parent.close() }
-      liveSessions.add(`${hash(projectKey)}:${sessionID}`)
+      liveSessions.add(token)
     },
     async list() {
       let names
@@ -131,6 +161,7 @@ export const createJournalStore = (root, projectKey) => {
     },
     async remove(sessionID) {
       await rm(fileFor(sessionID), { force: true })
+      removedSessions.add(`${hash(projectKey)}:${sessionID}`)
     },
   }
 }
@@ -164,15 +195,19 @@ const idleMessages = (messages, turnsToKeep) => {
 export const messageKey = (message, text) => `${message.id}:${hash(text)}`
 
 export const needsFlush = (messages, journal, options) => {
-  if (journal.messages.some((item) => item.chunks.some((chunk) => chunk.state === "pending"))) return true
-  const existing = new Set(journal.messages.map((item) => item.key))
+  const existing = new Set(journal.messages
+    .filter((item) => item.captured || item.chunks.some((chunk) => chunk.state !== "pending"))
+    .map((item) => item.key))
   let added = 0
   for (const message of latestBoundary(messages)) {
     const text = serializeMessage(message)
     if (!text || existing.has(messageKey(message, text))) continue
     added += text.length
   }
-  return added >= options.minCaptureChars
+  if (added > 0 && added >= options.minCaptureChars) return true
+  const now = Date.now()
+  return journal.messages.some((item) => item.chunks.some((chunk) =>
+    chunk.state === "pending" && (chunk.nextAttemptAt ?? 0) <= now))
 }
 
 const recordAttempt = (chunk, result, now) => {
@@ -182,32 +217,87 @@ const recordAttempt = (chunk, result, now) => {
   chunk.lastAttemptAt = now
 }
 
-const trimEmptyPayloads = (journal) => {
+const trimEmptyPayloads = (journal, sessionID) => {
   const held = []
   for (const item of journal.messages) {
     if (item.chunks.some((chunk) => chunk.state === "empty")) held.push(item)
   }
-  for (const item of held.slice(0, Math.max(0, held.length - MAX_EMPTY_PAYLOADS))) {
+  const dropped = held.slice(0, Math.max(0, held.length - MAX_EMPTY_PAYLOADS))
+  if (dropped.length) console.warn(`[kindex] journal ${sessionID} trimmed ${dropped.length} empty payload(s)`)
+  for (const item of dropped) {
     delete item.source
     for (const chunk of item.chunks) delete chunk.body
   }
 }
 
-export const flushJournal = async ({ store, sessionID, messages, options, runKin, includeRecent = false, now = Date.now() }) => {
-  const journal = await store.read(sessionID)
+const collectTerminalBodies = (journal, sessionID, boundaryIds) => {
+  let collected = 0
+  for (const item of journal.messages) {
+    if (boundaryIds.has(item.id)) continue
+    const terminal = item.chunks.filter((chunk) => chunk.state === "unknown" && chunk.body !== undefined)
+    if (!terminal.length) continue
+    collected += terminal.length
+    for (const chunk of terminal) delete chunk.body
+    if (item.chunks.every((chunk) => chunk.state === "unknown")) delete item.source
+  }
+  if (collected) console.warn(`[kindex] journal ${sessionID} garbage-collected ${collected} chunk body(s)`)
+  return collected
+}
+
+const abandonJournal = (journal, sessionID, options, now) => {
+  if (journal.abandoned) return true
+  const pending = []
+  let oldest = Infinity
   for (const item of journal.messages) {
     for (const chunk of item.chunks) {
-      if (chunk.state === "inflight") chunk.state = "unknown"
+      if (chunk.state !== "pending" && chunk.state !== "inflight") continue
+      pending.push(chunk)
+      const seen = firstSeenAt(chunk, item)
+      if (seen) oldest = Math.min(oldest, seen)
     }
   }
+  if (!pending.length) return false
+  const countLimit = options.abandonAfterChunks ?? DEFAULTS.abandonAfterChunks
+  const ageLimit = options.abandonAfterMs ?? DEFAULTS.abandonAfterMs
+  if (pending.length <= countLimit && (oldest === Infinity || now - oldest <= ageLimit)) return false
+  journal.abandoned = true
+  console.warn(`[kindex] journal ${sessionID} abandoned with ${pending.length} pending chunk(s)`)
+  return true
+}
+
+const resetAgedInflight = (journal, options, now) => {
+  const timeout = options.compactChunkTimeoutMs ?? options.chunkTimeoutMs ?? DEFAULTS.compactChunkTimeoutMs
+  let reset = 0
+  for (const item of journal.messages) {
+    for (const chunk of item.chunks) {
+      if (chunk.state !== "inflight") continue
+      if (now - (chunk.lastAttemptAt ?? 0) <= timeout) continue
+      chunk.state = "unknown"
+      reset++
+    }
+  }
+  return reset
+}
+
+export const purgeJournal = async ({ store, sessionID, options, now = Date.now(), enqueue }) => {
+  const task = async () => {
+    const journal = await store.read(sessionID)
+    const reset = resetAgedInflight(journal, options, now)
+    const dropped = pendingChunks(journal)
+    await store.remove(sessionID)
+    console.warn(`[kindex] journal ${sessionID} dropped with ${dropped} pending chunk(s)`)
+    return { reset, dropped }
+  }
+  return enqueue ? enqueue(sessionID, task) : task()
+}
+
+export const flushJournal = async ({ store, sessionID, messages, options, runKin, includeRecent = false, now = Date.now() }) => {
+  const journal = await store.read(sessionID)
+  resetAgedInflight(journal, options, now)
   const existing = new Set(journal.messages.map((item) => item.key))
   const source = latestBoundary(messages)
   const boundaryIds = new Set(source.map((message) => message.id))
-  for (const item of journal.messages) {
-    if (boundaryIds.has(item.id) || !item.chunks.every((chunk) => chunk.state === "unknown")) continue
-    delete item.source
-    for (const chunk of item.chunks) delete chunk.body
-  }
+  collectTerminalBodies(journal, sessionID, boundaryIds)
   const candidates = includeRecent ? source : idleMessages(source, options.dropRecentTurns)
   for (const message of candidates) {
     const text = serializeMessage(message)
@@ -217,13 +307,17 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
     const topic = source.find((item) => item.type === "user" && item.text)?.text
       ?.replace(/\s+/g, " ").trim().slice(0, 90) || "session"
     journal.messages.push({
-      key, id: message.id, source: text, topic,
+      key, id: message.id, source: text, topic, captured: false,
       chunks: chunkText(text, options.chunkChars - topic.length - 4)
-        .map((body) => ({ body, state: "pending", attempts: 0, nextAttemptAt: 0 })),
+        .map((body) => ({ body, state: "pending", attempts: 0, nextAttemptAt: 0, firstSeenAt: now })),
     })
   }
 
   await store.write(sessionID, journal)
+  if (abandonJournal(journal, sessionID, options, now)) {
+    await store.write(sessionID, journal)
+    return { attempted: 0, failed: false, journal }
+  }
   const limit = includeRecent ? options.maxFlushChunks : options.maxChunks
   const chunkTimeoutMs = includeRecent
     ? options.compactChunkTimeoutMs ?? options.chunkTimeoutMs
@@ -233,7 +327,7 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
     for (const chunk of item.chunks) {
       if (attempted >= limit) return { attempted, failed: false, journal }
       if (chunk.state !== "pending") continue
-      if (chunk.nextAttemptAt > now) return { attempted, failed: false, journal }
+      if (chunk.nextAttemptAt > now) continue
       chunk.state = "inflight"
       chunk.attempts++
       await store.write(sessionID, journal)
@@ -248,10 +342,11 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
         return { attempted, failed: true, journal }
       }
       chunk.state = stateAfter(result)
+      if (chunk.state !== "pending") item.captured = true
       await store.write(sessionID, journal)
     }
   }
-  trimEmptyPayloads(journal)
+  trimEmptyPayloads(journal, sessionID)
   await store.write(sessionID, journal)
   return { attempted, failed: false, journal }
 }
@@ -259,10 +354,11 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
 export const flushStoredJournal = async ({ store, sessionID, options, runKin, now = Date.now() }) => {
   const journal = await store.read(sessionID)
   if (!journal) return { attempted: 0, failed: false }
-  for (const item of journal.messages) {
-    for (const chunk of item.chunks) {
-      if (chunk.state === "inflight") chunk.state = "unknown"
-    }
+  const abandoned = abandonJournal(journal, sessionID, options, now)
+  resetAgedInflight(journal, options, now)
+  if (abandoned) {
+    await store.write(sessionID, journal)
+    return { attempted: 0, failed: false }
   }
   let attempted = 0
   for (const item of journal.messages) {
@@ -362,6 +458,27 @@ export default Plugin.define({
       note("capture", sessionID, result.attempted, result.failed ? "failed" : "attempted")
       return { messages, failed: result.failed }
     })
+    const markCaptured = (sessionID, messages) => enqueue(sessionID, async () => {
+      const journal = await store.read(sessionID)
+      const known = new Set(journal.messages.map((item) => item.key))
+      const keys = new Set()
+      for (const message of latestBoundary(messages)) {
+        const text = serializeMessage(message)
+        if (text) keys.add(messageKey(message, text))
+      }
+      let marked = 0
+      for (const item of journal.messages) {
+        if (item.captured || !keys.has(item.key)) continue
+        item.captured = true
+        marked++
+      }
+      if (marked) await store.write(sessionID, journal)
+      note("watermark", sessionID, marked)
+    })
+    const purge = (sessionID) => purgeJournal({
+      store, sessionID, options: opt, enqueue,
+      now: Date.now(),
+    })
     const contextBlock = async (topic) => {
       const args = ["context", "--topic", topic, "--level", opt.contextLevel, "--tokens", String(opt.contextTokens), "--format", "raw"]
       if (opt.trustedOnly) args.push("--trusted-only")
@@ -447,25 +564,16 @@ export default Plugin.define({
           if (!await eventMatchesLocation(event)) continue
           const messages = await serialize(data.sessionID)
           const journal = await store.read(data.sessionID)
-          if (!needsFlush(messages, journal, opt)) {
-            note("idle gate closed", data.sessionID)
-            continue
-          }
-          await capture(data.sessionID, false)
+          if (needsFlush(messages, journal, opt)) await capture(data.sessionID, false)
+          else note("idle gate closed", data.sessionID)
+          await markCaptured(data.sessionID, messages)
         } catch (error) {
           console.error("[kindex] event processing failed", error)
         }
       }
     })().catch((error) => { if (!controller.signal.aborted) console.error("[kindex] event subscription failed", error) })
-    void (async () => {
-      const staleBefore = Date.now() - opt.sweepStaleMs
-      const journals = (await store.list()).sort((a, b) => a.mtimeMs - b.mtimeMs).slice(0, 50)
-      for (const { sessionID, mtimeMs } of journals) {
-        if (controller.signal.aborted) return
-        try { await capture(sessionID, mtimeMs < staleBefore) }
-        catch (error) { note("sweep skipped", sessionID, error.message) }
-      }
-    })().catch((error) => { if (!controller.signal.aborted) console.error("[kindex] startup sweep failed", error) })
+    void sweepOnce({ ctx: { capture, signal: controller.signal, options: opt, location: ctx.location }, store })
+      .catch((error) => { if (!controller.signal.aborted) console.error("[kindex] startup sweep failed", error) })
     return () => controller.abort()
   },
 })
