@@ -316,9 +316,9 @@ export const purgeJournal = async ({ store, sessionID, options, now = Date.now()
 
 export const flushJournal = async ({ store, sessionID, messages, options, runKin, includeRecent = false, now = Date.now() }) => {
   const journal = await store.read(sessionID)
-  const reset = resetAgedInflight(journal, options, now)
+  resetAgedInflight(journal, options, now)
   const abandoned = abandonChunks(journal, sessionID, options, now)
-  if (reset || abandoned) await store.write(sessionID, journal)
+  if (abandoned) await store.write(sessionID, journal)
   const existing = new Set(journal.messages.map((item) => item.key))
   const source = latestBoundary(messages)
   const boundaryIds = new Set(source.map((message) => message.id))
@@ -375,9 +375,9 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
 export const flushStoredJournal = async ({ store, sessionID, options, runKin, now = Date.now() }) => {
   const journal = await store.read(sessionID)
   if (!journal) return { attempted: 0, failed: false }
-  const reset = resetAgedInflight(journal, options, now)
+  resetAgedInflight(journal, options, now)
   const abandoned = abandonChunks(journal, sessionID, options, now)
-  if (reset || abandoned) await store.write(sessionID, journal)
+  if (abandoned) await store.write(sessionID, journal)
   let attempted = 0
   for (const item of journal.messages) {
     for (const chunk of item.chunks) {

@@ -1655,11 +1655,6 @@ test("live capture still runs past minCaptureChars and stays closed across a res
     const journal = await store.read("live-capture-session")
     assert.ok(journal.messages.some((item) => item.id === "u-live"))
 
-    // The durable-watermark half of criterion 7 ("still closed after a restart") lives in
-    // "idle gate ignores a pending backlog and stays closed across a fresh store instance",
-    // which is deliberately red until criterion 1 lands. Asserting it here would make this
-    // guard red for the wrong reason today.
-
     // Drain before leaving: this test now performs real capture, and a flush still running
     // after cleanup would spawn into whichever globalThis.Bun the NEXT test installed,
     // corrupting that test's spawn count.
