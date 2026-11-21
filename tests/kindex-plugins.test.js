@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { access, mkdir, rm, stat, utimes, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { mkdtemp } from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
@@ -753,6 +753,9 @@ test("flushes the tail and garbage-collects the journal when a session is delete
     event: { subscribe: (opts) => feed.subscribe(opts) },
   }
 
+  const warnings = []
+  const realWarn = console.warn
+  console.warn = (...args) => { warnings.push(args.join(" ")) }
   try {
     const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
     feed.push({
@@ -784,8 +787,11 @@ test("flushes the tail and garbage-collects the journal when a session is delete
     await access(failedFile)
     assert.equal(spawned.filter((args) => args.includes("compact-hook")).length, 2)
     assert.equal((await store.read("foreign-session")).messages.length, 1)
+    assert.ok(warnings.some((line) => line.includes("gone-session") && line.includes("dropped")),
+      "criterion 8: the deleted-session drain removed a journal with no unconditional log line")
     await cleanup()
   } finally {
+    console.warn = realWarn
     delete globalThis.Bun
   }
 })
@@ -1228,6 +1234,58 @@ test("a journal past the pending-age threshold is abandoned and never retried", 
       "the abandonment transition emitted no unconditional log naming the journal and count")
   } finally {
     console.warn = oldWarn
+  }
+})
+
+test("a legacy journal with no per-chunk firstSeenAt abandons on journal age", async () => {
+  // Regression this catches: the age check reading ONLY chunk.firstSeenAt. Chunks written
+  // by the previous plugin version never carried that field, so a small legacy backlog
+  // (fewer than abandonAfterChunks pending) is replayed on every process start forever.
+  // Red if the age fallback to journal.createdAt is removed: with no chunk firstSeenAt,
+  // oldest stays Infinity and the age branch cannot fire.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-legacy-age")
+  const now = Date.now()
+  // createdAt is stamped by hand to reproduce a journal written before the field existed.
+  // The three chunks are the legacy shape the previous plugin version wrote: no
+  // firstSeenAt, no capturedAt.
+  const file = await seedJournal(store, "abandon-legacy-age-session", [{
+    key: "abandon-legacy-1", id: "u-legacy", source: "legacy backlog", topic: "abandon legacy age",
+    chunks: [{ body: "legacy backlog", state: "pending", attempts: 1, nextAttemptAt: now + 3_600_000 }],
+  }, {
+    key: "abandon-legacy-2", id: "u-legacy-2", source: "legacy backlog two", topic: "abandon legacy age",
+    chunks: [{ body: "legacy backlog two", state: "pending", attempts: 1, nextAttemptAt: now + 3_600_000 }],
+  }, {
+    key: "abandon-legacy-3", id: "u-legacy-3", source: "legacy backlog three", topic: "abandon legacy age",
+    chunks: [{ body: "legacy backlog three", state: "pending", attempts: 1, nextAttemptAt: now + 3_600_000 }],
+  }])
+  const seeded = JSON.parse(await readFile(file, "utf8"))
+  await writeFile(file, JSON.stringify({ ...seeded, createdAt: now - 8 * DAY_MS }))
+
+  const logged = []
+  const oldWarn = console.warn
+  console.warn = (...args) => logged.push(args.join(" "))
+  try {
+    const spawned = spawnRecorder()
+    const calls = []
+    const result = await flushStoredJournal({
+      store, sessionID: "abandon-legacy-age-session",
+      options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256 },
+      runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
+      now,
+    })
+    const journal = await store.read("abandon-legacy-age-session")
+
+    assert.equal(compactHookCalls(spawned), 0)
+    assert.equal(calls.length, 0)
+    assert.equal(result.attempted, 0)
+    assert.equal(journal.abandoned, true)
+    assert.equal(journal.createdAt, now - 8 * DAY_MS,
+      "the creation stamp refreshed on write, so an actively replayed backlog never ages out")
+    assert.ok(logged.some((line) => line.includes("abandon-legacy-age-session") && /\b3\b/.test(line)),
+      "the abandonment transition emitted no unconditional log naming the journal and count")
+  } finally {
+    console.warn = oldWarn
+    delete globalThis.Bun
   }
 })
 

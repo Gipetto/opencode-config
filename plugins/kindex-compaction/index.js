@@ -129,6 +129,7 @@ export const createJournalStore = (root, projectKey) => {
       const temp = `${file}.${process.pid}.${randomUUID()}.tmp`
       const handle = await open(temp, "wx", 0o600)
       try {
+        if (!journal.createdAt) journal.createdAt = Date.now()
         await handle.writeFile(JSON.stringify({ ...journal, session: sessionID }))
         await handle.sync()
       } finally {
@@ -252,6 +253,9 @@ const abandonJournal = (journal, sessionID, options, now) => {
       if (chunk.firstSeenAt) oldest = Math.min(oldest, chunk.firstSeenAt)
     }
   }
+  // Legacy journals predate chunk.firstSeenAt; fall back to the journal creation stamp.
+  // lastAttemptAt and file mtime are refreshed by every retry, so they can't be used here.
+  if (oldest === Infinity && journal.createdAt) oldest = journal.createdAt
   if (!pending.length) return false
   const countLimit = options.abandonAfterChunks ?? DEFAULTS.abandonAfterChunks
   const ageLimit = options.abandonAfterMs ?? DEFAULTS.abandonAfterMs
@@ -544,7 +548,10 @@ export default Plugin.define({
                 console.warn(`[kindex] tail capture failed for deleted session ${sessionID}; journal retained`)
                 continue
               }
+              const drained = await store.read(sessionID)
+              const dropped = drained.messages.reduce((n, item) => n + item.chunks.length, 0)
               await store.remove(sessionID)
+              console.warn(`[kindex] journal ${sessionID} dropped with ${dropped} chunk(s)`)
               note("journal removed", sessionID)
             } catch (error) {
               console.warn(`[kindex] tail capture failed for deleted session ${data.sessionID}; journal retained`, error.message)
