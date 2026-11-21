@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
-import { access, mkdir, stat, utimes, writeFile } from "node:fs/promises"
-import { mkdtemp, rm } from "node:fs/promises"
+import { access, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
+import { mkdtemp } from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -21,6 +21,10 @@ const [{
   import("../plugins/kindex-compaction/index.js"),
   import("../plugins/kindex-memory/index.js"),
 ])
+
+const compactionPlugin = await import("../plugins/kindex-compaction/index.js")
+const purgeJournal = compactionPlugin.purgeJournal ?? null
+const sweepOnce = compactionPlugin.sweepOnce ?? null
 
 const options = {
   dropRecentTurns: 0,
@@ -749,6 +753,9 @@ test("flushes the tail and garbage-collects the journal when a session is delete
     event: { subscribe: (opts) => feed.subscribe(opts) },
   }
 
+  const warnings = []
+  const realWarn = console.warn
+  console.warn = (...args) => { warnings.push(args.join(" ")) }
   try {
     const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
     feed.push({
@@ -780,8 +787,11 @@ test("flushes the tail and garbage-collects the journal when a session is delete
     await access(failedFile)
     assert.equal(spawned.filter((args) => args.includes("compact-hook")).length, 2)
     assert.equal((await store.read("foreign-session")).messages.length, 1)
+    assert.ok(warnings.some((line) => line.includes("gone-session") && line.includes("dropped")),
+      "criterion 8: the deleted-session drain removed a journal with no unconditional log line")
     await cleanup()
   } finally {
+    console.warn = realWarn
     delete globalThis.Bun
   }
 })
@@ -996,4 +1006,906 @@ test("does not retry an empty chunk on a subsequent flush", async () => {
   assert.equal(tail.attempted, 0)
   assert.equal(calls.length, 0)
   assert.equal((await store.read("empty-retry-session")).messages[0].chunks[0].state, "empty")
+})
+
+const readableStream = (value) => new ReadableStream({
+  start(controller) {
+    if (value) controller.enqueue(new TextEncoder().encode(value))
+    controller.close()
+  },
+})
+
+const spawnRecorder = (stdout = "staged", code = 0) => {
+  const spawned = []
+  globalThis.Bun = {
+    spawn(args, spawnOptions) {
+      spawned.push({ args, cwd: spawnOptions?.cwd, input: spawnOptions?.stdin == null
+        ? null : new TextDecoder().decode(spawnOptions.stdin) })
+      return {
+        stdout: readableStream(stdout),
+        stderr: readableStream(code === 0 ? "" : "kin down"),
+        exited: Promise.resolve(code),
+        kill() {},
+      }
+    },
+  }
+  return spawned
+}
+
+const compactHookCalls = (spawned) => spawned.filter(({ args }) => args.includes("compact-hook")).length
+
+const seedJournal = async (store, sessionID, messages) => {
+  await mkdir(store.dir, { recursive: true, mode: 0o700 })
+  const file = join(store.dir, `${createHash("sha256").update(sessionID).digest("hex")}.json`)
+  await writeFile(file, JSON.stringify({ version: 1, messages, session: sessionID }))
+  return file
+}
+
+const waitFor = async (predicate, attempts = 200, delayMs = 5) => {
+  for (let i = 0; i < attempts; i++) {
+    if (await predicate()) return true
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+  }
+  return false
+}
+
+// A test that performs real capture must not leave a flush running: the spawn seam is the
+// shared globalThis.Bun, which the next test replaces, so a late spawn lands in that test's
+// recorder and corrupts its count. Settled means no chunk is inflight and none is due; the
+// terminal states (unknown, empty, abandoned) count as settled.
+const waitForDrain = async (store, sessionID, label) => {
+  const drained = await waitFor(async () => {
+    const journal = await store.read(sessionID)
+    return !journal.messages.some((item) => item.chunks.some((chunk) =>
+      chunk.state === "inflight" || (chunk.state === "pending" && chunk.nextAttemptAt <= Date.now())))
+  })
+  assert.equal(drained, true, `${label} never settled before the test ended`)
+}
+
+const DAY_MS = 24 * 3600 * 1000
+
+test("idle gate ignores a pending backlog and stays closed across a fresh store instance", async () => {
+  // Regression this catches: an idle gate that treats "thousands of chunks pending" as
+  // work to do. Red if a session.idle for an already-captured session issues any
+  // compact-hook spawn, or if the captured-content watermark lives only in memory so a
+  // fresh store/module instance re-captures the same content.
+  const projectDirectory = join(root, "gate-backlog-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const backlog = Array.from({ length: 2000 }, (_, index) => ({
+    key: `backlog-${index}`, id: `b${index}`, source: `backlog source ${index}`, topic: "backlog",
+    chunks: [{
+      body: `backlog body ${index}`, state: "pending", attempts: 1,
+      nextAttemptAt: Date.now() + 3_600_000, firstSeenAt: Date.now(),
+    }],
+  }))
+  await seedJournal(store, "gate-backlog-session", backlog)
+
+  const captured = [userMessage("u1", "already captured content")]
+  const capturedText = serializeMessage(captured[0])
+  await seedJournal(store, "gate-captured-marker", [{
+    key: messageKey(captured[0], capturedText), id: "u1", source: capturedText, topic: "gate backlog",
+    chunks: [{
+      body: capturedText, state: "pending", attempts: 1,
+      nextAttemptAt: Date.now() + 3_600_000, firstSeenAt: Date.now(),
+    }],
+  }])
+  const spawned = spawnRecorder()
+  const feed = eventFeed()
+  feed.push({
+    type: "session.idle", data: { sessionID: "gate-captured-marker" },
+    location: { directory: projectDirectory, workspaceID: "ws-gate" },
+  })
+  const ctx = {
+    options: { ...options, prime: false, minCaptureChars: 0, dropRecentTurns: 0 },
+    location: { directory: projectDirectory, workspaceID: "ws-gate", project: { directory: projectDirectory } },
+    session: {
+      async context({ sessionID }) {
+        if (sessionID !== "gate-captured-marker") throw new Error(`unexpected context read for ${sessionID}`)
+        return captured
+      },
+      async hook() {},
+    },
+    event: { subscribe: (opts) => feed.subscribe(opts) },
+  }
+  assert.equal(needsFlush(captured, await store.read("gate-captured-marker"), { minCaptureChars: 0 }), true,
+    "fixture is wrong: the gate already reports no new content, so zero kin proves nothing")
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    const gateClosed = await waitFor(async () => compactHookCalls(spawned) === 0 &&
+      (await store.read("gate-captured-marker")).messages.some((item) => item.captured === true))
+    assert.equal(gateClosed, true, "idle did not record the captured-content watermark")
+    assert.equal(compactHookCalls(spawned), 0)
+
+    const freshStore = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+    const journal = await freshStore.read("gate-captured-marker")
+    assert.ok(needsFlush(captured, journal, { minCaptureChars: 0 }) === false,
+      "the watermark is memory-only: a fresh store instance still reports uncaptured content")
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("idle still runs a bounded retry pass for already-due pending chunks", async () => {
+  // Regression this catches: an idle gate so strict it silently stops real capture.
+  // Red if a session with no new content but already-due pending chunks performs zero
+  // kin work, or if that retry pass exceeds the per-event cap.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-gate-retry")
+  const message = userMessage("u1", "due retry payload")
+  const text = serializeMessage(message)
+  await seedJournal(store, "gate-retry-session", [{
+    key: messageKey(message, text), id: "u1", source: text, topic: "due retry payload",
+    chunks: Array.from({ length: 6 }, (_, index) => ({
+      body: `due chunk ${index}`, state: "pending", attempts: 1, nextAttemptAt: 0,
+      firstSeenAt: Date.now(),
+    })),
+  }])
+  const calls = []
+  const result = await flushJournal({
+    store, sessionID: "gate-retry-session", messages: [message],
+    options: { ...options, minCaptureChars: 0 },
+    includeRecent: false, runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
+  })
+  // The fixture makes six chunks due, so six is the correct pass size; asserting the full
+  // cap here would fail on correct behavior. What must hold is that the retry pass runs at
+  // all and stays inside the per-event cap.
+  assert.ok(calls.length > 0, "a session with no new content performed no kin retry work")
+  assert.ok(result.attempted > 0, "the retry pass reported zero attempts")
+  assert.ok(calls.length <= options.maxChunks, `the retry pass exceeded the per-event cap: ${calls.length}`)
+  assert.ok(result.attempted <= options.maxChunks, `the retry pass exceeded the per-event cap: ${result.attempted}`)
+})
+
+test("the stale-journal sweep runs at most once per process", async () => {
+  // Regression this catches: a sweep that re-runs on every setup() call, so each new
+  // plugin instance replays the whole backlog. Red if two setup() calls in one process
+  // spawn compact-hook work for the same stale journal twice. setup() builds a fresh
+  // store on every call, so the guard has to key on the location, not the store.
+  const projectDirectory = join(root, "sweep-once-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const stale = new Date(Date.now() - 48 * 3600 * 1000)
+  await seedJournal(store, "sweep-once-session", [{
+    key: "sweep-once-1", id: "u-tail", source: "tail lost to a quiet exit", topic: "sweep once",
+    chunks: [{ body: "tail lost to a quiet exit", state: "pending", attempts: 0, nextAttemptAt: 0 }],
+  }])
+  const file = join(store.dir, `${createHash("sha256").update("sweep-once-session").digest("hex")}.json`)
+  await utimes(file, stale, stale)
+
+  const spawned = spawnRecorder()
+  const ctx = {
+    options: { ...options, dropRecentTurns: 0, prime: false, chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000 },
+    location: { directory: projectDirectory, workspaceID: "ws-sweep-once", project: { directory: projectDirectory } },
+    session: {
+      async context({ sessionID }) {
+        if (sessionID !== "sweep-once-session") throw new Error(`unexpected context read for ${sessionID}`)
+        return []
+      },
+      async hook() {},
+    },
+    event: { subscribe: (opts) => eventFeed().subscribe(opts) },
+  }
+  const otherDirectory = join(root, "sweep-once-other-proj")
+  const otherCtx = {
+    ...ctx,
+    location: { directory: otherDirectory, workspaceID: "ws-sweep-once-other", project: { directory: otherDirectory } },
+  }
+  const otherStore = createJournalStore(process.env.XDG_STATE_HOME, otherDirectory)
+  try {
+    assert.ok(sweepOnce, "sweepOnce must be exported — criterion 2 (sweep once per location)")
+    // Seam check: the guard has to actually suppress a second pass, otherwise the
+    // behavioural check below can pass vacuously (a first pass that succeeds leaves the
+    // stale journal terminal, so a re-sweep would spawn nothing anyway).
+    const probe = await sweepOnce({ ctx: otherCtx, store: otherStore })
+    assert.equal(probe.swept, true, "an unswept location must sweep")
+    const again = await sweepOnce({ ctx: otherCtx, store: otherStore })
+    assert.equal(again.swept, false, "the same location swept twice in one process")
+    const plugin = (await import("../plugins/kindex-compaction/index.js")).default
+    const first = await plugin.setup(ctx)
+    const swept = await waitFor(async () => compactHookCalls(spawned) > 0)
+    assert.equal(swept, true, "the sweep never ran for a stale journal")
+    const second = await plugin.setup(ctx)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.equal(compactHookCalls(spawned), 1,
+      "a second setup() in the same process replayed the same stale journal")
+    await first()
+    await second()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("a pending chunk past the age threshold is abandoned without silencing its journal", async () => {
+  // Regression this catches: an endless backfill that replays week-old chunks, AND the
+  // blast radius the user rejected — a journal-level sticky flag that also silenced
+  // capture of fresh content. Red if the aged chunk is still sent to kin, if its state is
+  // not the terminal "abandoned", if a journal-level flag is consulted (a journal-level
+  // abandonment returns early, so the second flush below performs zero kin for the young
+  // due chunk), or if the transition is not logged.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-age")
+  const now = Date.now()
+  await seedJournal(store, "abandon-age-session", [{
+    key: "abandon-age-1", id: "u-old", source: "eight day old backlog", topic: "abandon age",
+    chunks: [{
+      body: "eight day old backlog", state: "pending", attempts: 3,
+      nextAttemptAt: 0, firstSeenAt: now - 8 * DAY_MS,
+    }],
+  }, {
+    // A young, due chunk in the SAME journal: per-chunk abandonment must still retry it.
+    key: "abandon-age-2", id: "u-young", source: "fresh due chunk", topic: "abandon age",
+    chunks: [{
+      body: "fresh due chunk", state: "pending", attempts: 0,
+      nextAttemptAt: 0, firstSeenAt: now - 60_000,
+    }],
+  }])
+
+  const logged = []
+  const oldWarn = console.warn
+  console.warn = (...args) => logged.push(args.join(" "))
+  try {
+    const calls = []
+    // Fails on purpose: a success would take the young chunk to "unknown" in this flush,
+    // leaving the second flush below nothing to attempt. A failure returns it to pending
+    // with a two-second backoff, which now + 1h then clears.
+    const runKin = async (input) => { calls.push(input); return { status: "failure", error: "kin down" } }
+    const result = await flushStoredJournal({
+      store, sessionID: "abandon-age-session",
+      options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256 },
+      runKin, now,
+    })
+    const journal = await store.read("abandon-age-session")
+
+    assert.equal(calls.some((input) => input.includes("eight day old backlog")), false,
+      "kin was invoked for a chunk older than abandonAfterMs")
+    assert.equal(journal.messages[0].chunks[0].state, "abandoned",
+      "the aged pending chunk did not transition to the terminal abandoned state")
+    assert.equal(result.attempted, 1,
+      "the aged chunk took the whole flush with it instead of being skipped per chunk")
+    assert.ok(logged.some((line) => line.includes("abandon-age-session") && /\b1\b/.test(line)),
+      "the abandonment transition emitted no unconditional log naming the journal and count")
+
+    // No journal-level flag: a second flush of the same journal must still perform kin for
+    // the non-abandoned due chunk. A sticky journal flag returns { attempted: 0 } here.
+    // now is pushed past the backoff the first flush's failure path just wrote on it.
+    const second = await flushStoredJournal({
+      store, sessionID: "abandon-age-session",
+      options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256 },
+      runKin, now: now + 3_600_000,
+    })
+    assert.equal(second.attempted, 1,
+      "a journal containing an abandoned chunk stopped retrying its other due chunks")
+    assert.equal(journal.abandoned, undefined,
+      "abandonment was recorded as a journal-level flag instead of per chunk")
+  } finally {
+    console.warn = oldWarn
+  }
+})
+
+test("a legacy journal with no per-chunk firstSeenAt abandons on journal age", async () => {
+  // Regression this catches: the age check reading ONLY chunk.firstSeenAt. Chunks written
+  // by the previous plugin version never carried that field, so a small legacy backlog
+  // (fewer than abandonAfterChunks pending) is replayed on every process start forever.
+  // Red if the age fallback to journal.createdAt is removed: with no chunk firstSeenAt,
+  // oldest stays Infinity and the age branch cannot fire, so every legacy pending chunk
+  // stays pending and kin runs for it.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-legacy-age")
+  const now = Date.now()
+  // createdAt is stamped by hand to reproduce a journal written before the field existed.
+  // The three chunks are the legacy shape the previous plugin version wrote: no
+  // firstSeenAt, no capturedAt.
+  const file = await seedJournal(store, "abandon-legacy-age-session", [{
+    key: "abandon-legacy-1", id: "u-legacy", source: "legacy backlog", topic: "abandon legacy age",
+    chunks: [{ body: "legacy backlog", state: "pending", attempts: 1, nextAttemptAt: now + 3_600_000 }],
+  }, {
+    key: "abandon-legacy-2", id: "u-legacy-2", source: "legacy backlog two", topic: "abandon legacy age",
+    chunks: [{ body: "legacy backlog two", state: "pending", attempts: 1, nextAttemptAt: now + 3_600_000 }],
+  }, {
+    key: "abandon-legacy-3", id: "u-legacy-3", source: "legacy backlog three", topic: "abandon legacy age",
+    chunks: [{ body: "legacy backlog three", state: "pending", attempts: 1, nextAttemptAt: now + 3_600_000 }],
+  }])
+  const seeded = JSON.parse(await readFile(file, "utf8"))
+  await writeFile(file, JSON.stringify({ ...seeded, createdAt: now - 8 * DAY_MS }))
+
+  const logged = []
+  const oldWarn = console.warn
+  console.warn = (...args) => logged.push(args.join(" "))
+  try {
+    const spawned = spawnRecorder()
+    const calls = []
+    const result = await flushStoredJournal({
+      store, sessionID: "abandon-legacy-age-session",
+      options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256 },
+      runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
+      now,
+    })
+    const journal = await store.read("abandon-legacy-age-session")
+
+    assert.equal(compactHookCalls(spawned), 0)
+    assert.equal(calls.length, 0)
+    assert.equal(result.attempted, 0)
+    assert.deepEqual(journal.messages.map((item) => item.chunks[0].state),
+      ["abandoned", "abandoned", "abandoned"],
+      "legacy pending chunks were not transitioned to the terminal abandoned state")
+    assert.equal(journal.abandoned, undefined,
+      "abandonment was recorded as a journal-level flag instead of per chunk")
+    assert.equal(journal.createdAt, now - 8 * DAY_MS,
+      "the creation stamp refreshed on write, so an actively replayed backlog never ages out")
+    assert.ok(logged.some((line) => line.includes("abandon-legacy-age-session") && /\b3\b/.test(line)),
+      "the abandonment transition emitted no unconditional log naming the journal and count")
+  } finally {
+    console.warn = oldWarn
+    delete globalThis.Bun
+  }
+})
+
+test("a backlog past the pending-count threshold abandons the oldest excess chunks", async () => {
+  // Regression this catches: a 3,020-chunk backlog being replayed at ~25s per chunk with no
+  // user activity. Red if the oldest excess pending chunks are still sent to kin, if the
+  // newest abandonAfterChunks pending chunks are also abandoned (the user kept the newest
+  // work on purpose), or if the transition is not logged.
+  //
+  // abandonAfterChunks is shrunk to 3 so the fixture stays small; the age branch is
+  // disabled (abandonAfterMs far in the future) so the count branch is the only one that
+  // can fire, which pins this test to criterion 3's count rule.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-count")
+  const now = Date.now()
+  await seedJournal(store, "abandon-count-session", Array.from({ length: 6 }, (_, index) => ({
+    key: `abandon-count-${index}`, id: `u${index}`, source: `pending body ${index}`, topic: "abandon count",
+    chunks: [{
+      // index 0 is the oldest, index 5 the newest.
+      body: `pending body ${index}`, state: "pending", attempts: 1,
+      nextAttemptAt: 0, firstSeenAt: now - (6 - index) * DAY_MS,
+    }],
+  })))
+
+  const logged = []
+  const oldWarn = console.warn
+  console.warn = (...args) => logged.push(args.join(" "))
+  try {
+    const calls = []
+    const result = await flushStoredJournal({
+      store, sessionID: "abandon-count-session",
+      options: { ...options, abandonAfterMs: 3650 * DAY_MS, abandonAfterChunks: 3 },
+      runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
+      now,
+    })
+    const journal = await store.read("abandon-count-session")
+    const states = journal.messages.map((item) => item.chunks[0].state)
+    const kinBodies = calls.map((input) => input.slice(input.indexOf("\n\n") + 2))
+
+    assert.deepEqual(states.slice(0, 3), ["abandoned", "abandoned", "abandoned"],
+      "the oldest excess pending chunks were not transitioned to the terminal abandoned state")
+    assert.deepEqual(states.slice(3), ["unknown", "unknown", "unknown"],
+      "the newest abandonAfterChunks chunks were abandoned instead of attempted to completion")
+    assert.equal(kinBodies.some((body) => /^pending body [012]$/.test(body)), false,
+      "kin was invoked for an abandoned oldest-excess chunk")
+    assert.equal(result.attempted, 3,
+      "the flush did not proceed with the newest eligible chunks after abandoning the excess")
+    assert.equal(journal.abandoned, undefined,
+      "abandonment was recorded as a journal-level flag instead of per chunk")
+    assert.ok(logged.some((line) => line.includes("abandon-count-session") && /\b3\b/.test(line)),
+      "the abandonment batch emitted no unconditional log naming the journal and count")
+  } finally {
+    console.warn = oldWarn
+  }
+})
+
+test("abandonment never gates the reset of an aged inflight chunk", async () => {
+  // Regression this catches: an abandonment check placed ahead of the inflight reset, so a
+  // crashed chunk stays inflight forever. Red if an aged inflight chunk in a journal whose
+  // aged pending sibling is abandoned is left in the inflight state.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-inflight")
+  const now = Date.now()
+  await seedJournal(store, "abandon-inflight-session", [{
+    key: "abandon-inflight-1", id: "u-crash", source: "chunk orphaned by a crash", topic: "abandon inflight",
+    chunks: [{
+      body: "chunk orphaned by a crash", state: "inflight", attempts: 2, nextAttemptAt: 0,
+      lastAttemptAt: now - 10 * DAY_MS, firstSeenAt: now - 10 * DAY_MS,
+    }],
+  }, {
+    // Aged pending sibling: under per-chunk abandonment this one becomes "abandoned", but
+    // it must not stop the aged inflight chunk above from being reset.
+    key: "abandon-inflight-2", id: "u-aged", source: "aged pending backlog", topic: "abandon inflight",
+    chunks: [{
+      body: "aged pending backlog", state: "pending", attempts: 2, nextAttemptAt: 0,
+      firstSeenAt: now - 10 * DAY_MS,
+    }],
+  }])
+
+  const calls = []
+  await flushStoredJournal({
+    store, sessionID: "abandon-inflight-session",
+    options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256, compactChunkTimeoutMs: 90_000 },
+    runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
+    now,
+  })
+  const journal = await store.read("abandon-inflight-session")
+
+  assert.equal(journal.messages[0].chunks[0].state, "unknown",
+    "an aged inflight chunk was left inflight because abandonment was evaluated first")
+  assert.equal(journal.messages[1].chunks[0].state, "abandoned",
+    "the aged pending sibling was not transitioned to the terminal abandoned state")
+  assert.equal(calls.length, 0,
+    "kin ran for a chunk of this journal instead of the aged pending one being abandoned")
+})
+
+test("unknown chunk bodies are garbage-collected even beside a pending sibling", async () => {
+  // Regression this catches: body GC that only fires when every sibling is terminal, so
+  // one permanently pending chunk pins the whole message body forever. Red if the unknown
+  // chunk keeps its body, or if the empty sibling loses its full body.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-body-gc")
+  const payload = "body that must be collected from the unknown chunk"
+  const first = await flushJournal({
+    store, sessionID: "body-gc-session", messages: [userMessage("u1", payload)],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+  assert.equal(first.journal.messages[0].chunks[0].state, "unknown")
+  first.journal.messages[0].chunks.push({ body: payload, state: "empty", attempts: 1, nextAttemptAt: 0 })
+  await store.write("body-gc-session", first.journal)
+
+  const boundary = { id: "c1", type: "compaction", status: "completed", summary: "new window" }
+  await flushJournal({
+    store, sessionID: "body-gc-session", messages: [boundary, userMessage("u-new", "after boundary")],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+  const pruned = (await store.read("body-gc-session")).messages.find((item) => item.id === "u1")
+
+  assert.equal(pruned.chunks[0].state, "unknown")
+  assert.equal(pruned.chunks[0].body, undefined)
+  assert.equal(pruned.chunks[1].state, "empty")
+  assert.equal(pruned.chunks[1].body, payload)
+})
+
+test("abandoned chunk bodies are garbage-collected even beside a pending sibling", async () => {
+  // Regression this catches: terminal body GC that still only recognises "unknown", so an
+  // abandoned backlog keeps its 4MB bodies forever (criterion 4's amended terminal set).
+  // Red if the abandoned chunk keeps its body, or if the pending sibling loses its body.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-body-gc-abandoned")
+  const payload = "body that must be collected from the abandoned chunk"
+  const first = await flushJournal({
+    store, sessionID: "body-gc-abandoned-session", messages: [userMessage("u1", payload)],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+  // Hand-set the post-abandonment steady state: one terminal abandoned chunk, one chunk
+  // still pending, in the same message.
+  first.journal.messages[0].chunks[0].state = "abandoned"
+  // Held in backoff so it stays pending across the flush: this test is about body GC not
+  // touching a still-pending chunk, not about whether the sibling is due.
+  first.journal.messages[0].chunks.push({
+    body: payload, state: "pending", attempts: 1, nextAttemptAt: Date.now() + 3_600_000,
+  })
+  await store.write("body-gc-abandoned-session", first.journal)
+
+  const boundary = { id: "c1", type: "compaction", status: "completed", summary: "new window" }
+  await flushJournal({
+    store, sessionID: "body-gc-abandoned-session", messages: [boundary, userMessage("u-new", "after boundary")],
+    options: { ...options, abandonAfterMs: 3650 * DAY_MS, abandonAfterChunks: 256 }, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+  const pruned = (await store.read("body-gc-abandoned-session")).messages.find((item) => item.id === "u1")
+
+  assert.equal(pruned.chunks[0].state, "abandoned")
+  assert.equal(pruned.chunks[0].body, undefined,
+    "an abandoned chunk kept its body, so an abandoned backlog holds its payloads forever")
+  assert.equal(pruned.chunks[1].state, "pending")
+  assert.equal(pruned.chunks[1].body, payload,
+    "body GC collected the body of a chunk that is still pending")
+})
+
+test("a body-GC batch emits one unconditional log naming the journal and count", async () => {
+  // Regression this catches: observability routed through the debug-gated note(), so a
+  // production process silently deletes bodies. Red if no console.warn line names the
+  // journal and the collected count with debug off.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-body-gc-log")
+  const payload = "collected body payload"
+  await flushJournal({
+    store, sessionID: "body-gc-log-session", messages: [userMessage("u1", payload)],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+
+  const logged = []
+  const oldWarn = console.warn
+  console.warn = (...args) => logged.push(args.join(" "))
+  try {
+    const boundary = { id: "c1", type: "compaction", status: "completed", summary: "new window" }
+    await flushJournal({
+      store, sessionID: "body-gc-log-session", messages: [boundary, userMessage("u-new", "after boundary")],
+      options, includeRecent: true,
+      runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+    })
+  } finally {
+    console.warn = oldWarn
+  }
+  assert.ok(logged.some((line) => line.includes("body-gc-log-session") && /\b1\b/.test(line)),
+    "the body-GC batch emitted no unconditional log naming the journal and count")
+})
+
+test("purge resets an aged inflight chunk and a later flush cannot resurrect the journal", async () => {
+  // Regression this catches: purge bypassing the per-session queue (interleaving with a
+  // flush) or a later flush writing back a stale in-memory copy. Red if purge leaves the
+  // aged inflight chunk inflight, or if the flush after purge recreates the journal file.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-purge")
+  const now = Date.now()
+  await seedJournal(store, "purge-session", [{
+    key: "purge-1", id: "u-crash", source: "chunk orphaned inflight", topic: "purge",
+    chunks: [{
+      body: "chunk orphaned inflight", state: "inflight", attempts: 1, nextAttemptAt: 0,
+      lastAttemptAt: now - 10 * 60_000,
+    }],
+  }])
+  const file = join(store.dir, `${createHash("sha256").update("purge-session").digest("hex")}.json`)
+
+  assert.ok(purgeJournal, "purgeJournal must be exported — criterion 5 (serialized, irreversible purge)")
+  const purged = await purgeJournal({
+    store, sessionID: "purge-session",
+    options: { ...options, compactChunkTimeoutMs: 90_000 }, now,
+  })
+  assert.equal(purged.reset, 1)
+  await assert.rejects(access(file))
+
+  await flushJournal({
+    store, sessionID: "purge-session", messages: [],
+    options: { ...options, minCaptureChars: 0 }, includeRecent: true,
+    runKin: async () => ({ status: "success", staged: 1 }), now: now + 60_000,
+  })
+  await assert.rejects(access(file), "a flush recreated the purged journal from a stale in-memory copy")
+})
+
+test("purge is serialized behind an in-flight flush for the same session", async () => {
+  // Regression this catches: purge running outside the per-session queue, so it deletes
+  // the journal while a flush holds a copy of it. Red if purge resolves before the flush
+  // that started first, i.e. the two interleave.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-purge-queue")
+  let releaseKin
+  const kinGate = new Promise((resolve) => { releaseKin = resolve })
+  let markKinStarted
+  const kinStarted = new Promise((resolve) => { markKinStarted = resolve })
+  const flushPromise = flushJournal({
+    store, sessionID: "purge-queue-session", messages: [userMessage("u1", "payload under active capture")],
+    options, includeRecent: true,
+    runKin: async () => { markKinStarted(); await kinGate; return { status: "success", staged: 1 } },
+  })
+  await kinStarted
+
+  let purgeFinished = false
+  assert.ok(purgeJournal, "purgeJournal must be exported — criterion 5 (purge runs through the per-session queue)")
+  const purgePromise = purgeJournal({
+    store, sessionID: "purge-queue-session",
+    options: { ...options, compactChunkTimeoutMs: 90_000 },
+    // The per-session queue lives inside setup(); the purge seam must expose it so purge
+    // and an in-flight flush contend for the same lane. Shape is implementer's choice.
+    enqueue: (sessionID, task) => {
+      const previous = flushPromise
+      const current = previous.catch(() => {}).then(task)
+      return current
+    },
+  }).then(() => { purgeFinished = true })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(purgeFinished, false, "purge ran while a flush for the same session was in flight")
+
+  releaseKin()
+  await Promise.all([flushPromise, purgePromise])
+  assert.equal(purgeFinished, true)
+  await assert.rejects(access(join(store.dir, `${createHash("sha256").update("purge-queue-session").digest("hex")}.json`)))
+})
+
+test("a chunk in backoff no longer blocks capture of newer messages", async () => {
+  // Regression this catches: index.js:236 aborting the whole pass on one chunk with a
+  // future nextAttemptAt, so live capture stops behind a single backed-off chunk. Red if
+  // the newer message is not journaled, or if kin is invoked for the backed-off chunk.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-backoff-skip")
+  const now = Date.now()
+  const old = userMessage("u-old", "chunk held in backoff")
+  const oldText = serializeMessage(old)
+  await seedJournal(store, "backoff-skip-session", [{
+    key: messageKey(old, oldText), id: "u-old", source: oldText, topic: "backoff skip",
+    chunks: [{
+      body: oldText, state: "pending", attempts: 4, nextAttemptAt: now + 3_600_000,
+    }],
+  }])
+
+  const calls = []
+  const result = await flushJournal({
+    store, sessionID: "backoff-skip-session",
+    messages: [old, userMessage("u-new", "newer message behind a backed-off chunk")],
+    options: { ...options, minCaptureChars: 0 }, includeRecent: false,
+    runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
+    now,
+  })
+  const journal = await store.read("backoff-skip-session")
+
+  assert.ok(journal.messages.some((item) => item.id === "u-new"))
+  assert.equal(result.attempted, 1)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].includes("newer message behind a backed-off chunk"), true)
+})
+
+test("live capture still runs past minCaptureChars and stays closed across a restart", async () => {
+  // Regression this catches: a throttle that silently stops real capture. Red if a normal
+  // session that produces new content past minCaptureChars and then idles captures zero
+  // chunks, both on the first pass and after a simulated restart (fresh store instance).
+  //
+  // This is the criterion 7 guard, so it must be green against the CURRENT plugin: its job
+  // is to detect a future throttle, not the known abort-the-pass defect at index.js:236.
+  // No backed-off chunk is seeded here on purpose — with index.js:236 still aborting the
+  // pass, ANY pending chunk ordered before the appended live item prevents today's code
+  // from reaching it, which would make this guard red for criterion 6's defect instead of
+  // for a throttle. Criterion 6 has its own deliberately-red guard: "a chunk in backoff no
+  // longer blocks capture of newer messages".
+  const projectDirectory = join(root, "live-capture-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const now = Date.now()
+  const old = userMessage("u-old", "old chunk held in backoff")
+  const oldText = serializeMessage(old)
+  const live = "live capture payload ".repeat(500)
+  const liveText = serializeMessage(userMessage("u-live", live))
+  // Only an already-captured message is seeded: terminal, so the flush loop skips it and
+  // nothing is left in backoff to abort the pass before the new live item is reached.
+  await seedJournal(store, "live-capture-session", [
+    {
+      key: messageKey(old, oldText), id: "u-old", source: oldText, topic: "live capture",
+      chunks: [{ body: oldText, state: "unknown", attempts: 1, nextAttemptAt: 0 }],
+    },
+  ])
+
+  const spawned = spawnRecorder()
+  const ctx = {
+    options: { ...options, prime: false, dropRecentTurns: 0, chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000 },
+    location: { directory: projectDirectory, workspaceID: "ws-live", project: { directory: projectDirectory } },
+    session: { async context() { return [old, userMessage("u-live", live)] }, async hook() {} },
+    event: { subscribe: (opts) => feedWith("live-capture-session", projectDirectory, "ws-live") },
+  }
+  const idleGateClosed = needsFlush([old, userMessage("u-live", live)], await store.read("live-capture-session"),
+    { minCaptureChars: 6000 })
+  assert.equal(idleGateClosed, true, "the idle gate never opens for content past minCaptureChars")
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    const capturedLive = await waitFor(async () => compactHookCalls(spawned) > 0)
+    assert.equal(capturedLive, true, "live content past minCaptureChars was not captured")
+    const journal = await store.read("live-capture-session")
+    assert.ok(journal.messages.some((item) => item.id === "u-live"))
+
+    // This test performs real capture, so its flush has to settle before cleanup.
+    await waitForDrain(store, "live-capture-session", "the live-capture flush")
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("a journal with abandoned chunks still captures new content past minCaptureChars", async () => {
+  // Regression this catches: abandonment implemented as a journal-level sticky flag. Red if
+  // one stale chunk silences a live session forever — a journal whose backlog was once too
+  // old or too large then captures zero chunks, so real new content past minCaptureChars
+  // never reaches kin. This is the amended criterion 3's central guarantee: abandonment is
+  // per chunk, so the post-abandonment steady state must not gate capture.
+  const projectDirectory = join(root, "abandoned-live-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const old = userMessage("u-old", "eight day old backlog chunk")
+  const oldText = serializeMessage(old)
+  const live = "live capture payload after abandonment ".repeat(400)
+  // The post-abandonment steady state: the existing chunk is already terminal "abandoned",
+  // so nothing here is eligible for retry and only the new live content can drive kin.
+  await seedJournal(store, "abandoned-live-session", [{
+    key: messageKey(old, oldText), id: "u-old", source: oldText, topic: "abandoned live",
+    chunks: [{ body: oldText, state: "abandoned", attempts: 5, nextAttemptAt: 0 }],
+  }])
+
+  const spawned = spawnRecorder()
+  const ctx = {
+    options: { ...options, prime: false, dropRecentTurns: 0, minCaptureChars: 6000,
+      chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000 },
+    location: { directory: projectDirectory, workspaceID: "ws-abandoned-live",
+      project: { directory: projectDirectory } },
+    session: { async context() { return [old, userMessage("u-live", live)] }, async hook() {} },
+    event: { subscribe: (opts) => feedWith("abandoned-live-session", projectDirectory, "ws-abandoned-live") },
+  }
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    const capturedLive = await waitFor(async () => compactHookCalls(spawned) > 0)
+    assert.equal(capturedLive, true,
+      "a journal holding an abandoned chunk captured nothing for new content past minCaptureChars")
+    const journal = await store.read("abandoned-live-session")
+    assert.ok(journal.messages.some((item) => item.id === "u-live"),
+      "the new live message was never journaled because the journal was treated as abandoned")
+    assert.equal(journal.messages.find((item) => item.id === "u-old").chunks[0].state, "abandoned",
+      "the abandoned chunk was resurrected for retry instead of staying terminal")
+
+    // Capture ran here too, so this flush also has to settle before cleanup.
+    await waitForDrain(store, "abandoned-live-session", "the post-abandonment capture flush")
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+const feedWith = (sessionID, directory, workspaceID) => {
+  const feed = eventFeed()
+  feed.push({ type: "session.idle", data: { sessionID }, location: { directory, workspaceID } })
+  return feed.subscribe({ signal: new AbortController().signal })
+}
+
+test("a journal drop emits one unconditional log naming the journal and count", async () => {
+  // Regression this catches: journal deletion happening silently, so a lost backlog is
+  // invisible. Red if store.remove deletes a journal with pending chunks without a
+  // console.warn line naming the journal and the dropped count with debug off.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-drop-log")
+  await seedJournal(store, "drop-log-session", Array.from({ length: 5 }, (_, index) => ({
+    key: `drop-${index}`, id: `u${index}`, source: `dropped body ${index}`, topic: "drop log",
+    chunks: [{ body: `dropped body ${index}`, state: "pending", attempts: 1, nextAttemptAt: 0 }],
+  })))
+
+  const logged = []
+  const oldWarn = console.warn
+  console.warn = (...args) => logged.push(args.join(" "))
+  try {
+    assert.ok(purgeJournal, "purgeJournal must be exported — criterion 8 (journal drop must be logged)")
+    await purgeJournal({ store, sessionID: "drop-log-session", options: { ...options, compactChunkTimeoutMs: 90_000 } })
+  } finally {
+    console.warn = oldWarn
+  }
+  assert.ok(logged.some((line) => line.includes("drop-log-session") && /\b5\b/.test(line)),
+    "the journal drop emitted no unconditional log naming the journal and count")
+})
+
+test("per-event caps and kin passthrough survive the throttle", async () => {
+  // Regression this catches: the throttle changing what kin is invoked with or how many
+  // chunks one event may attempt. Red if the idle path exceeds maxChunks, or if kinBin,
+  // the per-path timeout, or the configured env no longer reach the spawn.
+  const projectDirectory = join(root, "caps-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const spawned = spawnRecorder()
+  const ctx = {
+    options: {
+      ...options, prime: false, minCaptureChars: 0, dropRecentTurns: 0,
+      kinBin: "kin-throttled", env: { KINDEX_TEST_ENV: "passthrough" },
+      chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000,
+    },
+    location: { directory: projectDirectory, workspaceID: "ws-caps", project: { directory: projectDirectory } },
+    session: {
+      async context() {
+        return Array.from({ length: 12 }, (_, index) => userMessage(`u${index}`, `capped capture ${index}`))
+      },
+      async hook() {},
+    },
+    event: { subscribe: (opts) => feedWith("caps-session", projectDirectory, "ws-caps") },
+  }
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    const capped = await waitFor(async () => compactHookCalls(spawned) >= options.maxChunks)
+    assert.equal(capped, true)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const hooks = spawned.filter(({ args }) => args.includes("compact-hook"))
+    assert.equal(hooks.length, options.maxChunks)
+    assert.ok(hooks.every(({ args, cwd, input }) => args[0] === "kin-throttled" && cwd === projectDirectory &&
+      typeof input === "string" && input.length > 0))
+    assert.ok(hooks.every(({ args }) => args[1] === "compact-hook"))
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("kin invocations stay strictly one at a time under the throttle", async () => {
+  // Regression this catches: the retry/skip pass spawning chunks concurrently, multiplying
+  // the 20-26s LLM load instead of bounding it. Red if two compact-hook children are ever
+  // alive at the same time.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-serial")
+  let active = 0
+  let maxActive = 0
+  const spawnCounts = []
+  globalThis.Bun = {
+    spawn(args) {
+      if (args.includes("compact-hook")) {
+        active++
+        spawnCounts.push(active)
+        maxActive = Math.max(maxActive, active)
+      }
+      return {
+        stdout: readableStream("staged"), stderr: readableStream(""),
+        exited: new Promise((resolve) => setTimeout(() => { active--; resolve(0) }, 2)),
+        kill() {},
+      }
+    },
+  }
+  const gatedKin = async () => {
+    const child = globalThis.Bun.spawn(["kin", "compact-hook"])
+    await child.exited
+    return { status: "success", staged: 1 }
+  }
+  try {
+    await seedJournal(store, "serial-session", Array.from({ length: 4 }, (_, index) => ({
+      key: `serial-${index}`, id: `u${index}`, source: `serial backlog ${index}`, topic: "serial",
+      chunks: [{ body: `serial backlog ${index}`, state: "pending", attempts: 0, nextAttemptAt: 0 }],
+    })))
+    const backlog = await flushStoredJournal({
+      store, sessionID: "serial-session",
+      options: { ...options, compactChunkTimeoutMs: 90_000 }, runKin: gatedKin,
+    })
+    assert.equal(backlog.attempted, 4)
+
+    const live = await flushJournal({
+      store, sessionID: "serial-live-session", messages: [userMessage("u1", "serial live payload")],
+      options: { ...options, minCaptureChars: 0 }, includeRecent: false, runKin: gatedKin,
+    })
+    assert.equal(live.attempted, 1)
+    assert.equal(maxActive, 1)
+    assert.deepEqual(spawnCounts, [1, 1, 1, 1, 1])
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("the chunk kill timer bounds a kin call that never returns", async () => {
+  // Regression this catches: the throttle dropping or widening the kill timer, so one hung
+  // 20-26s LLM call blocks the whole queue forever. Red if a compact-hook child that never
+  // exits is not killed at compactChunkTimeoutMs, or if the timed-out chunk is left inflight
+  // instead of returned to pending with backoff. Asserts CURRENT behavior, not new behavior.
+  //
+  // The kill timer lives inside the plugin's private child-process runner, so it is driven
+  // through the plugin's own idle capture path, which calls that runner with the per-path
+  // timeout. The fake child never resolves `exited`, so only the timer can end the pass.
+  const projectDirectory = join(root, "kill-timer-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const message = userMessage("u1", "payload behind a hung kin")
+  const text = serializeMessage(message)
+
+  let killed = 0
+  let spawnCount = 0
+  globalThis.Bun = {
+    spawn(args) {
+      spawnCount++
+      // The child never exits on its own; kill() is what ends it, exactly as a real SIGKILL
+      // closes the pipes and resolves `exited`. Without this the plugin's Promise.all over
+      // stdout/stderr/exited never settles and the test hangs instead of proving the timer.
+      let settle
+      const exited = new Promise((resolve) => { settle = resolve })
+      const closed = () => new ReadableStream({ start(c) { c.close() } })
+      return {
+        stdout: closed(),
+        stderr: closed(),
+        exited,
+        kill() { killed++; settle(137) },
+      }
+    },
+  }
+  const ctx = {
+    options: {
+      ...options, prime: false, minCaptureChars: 0, dropRecentTurns: 0,
+      // The idle capture path takes chunkTimeoutMs (index.js:228-230, includeRecent false);
+      // compactChunkTimeoutMs only governs the compaction and stale-sweep paths.
+      chunkTimeoutMs: 40, compactChunkTimeoutMs: 40,
+    },
+    location: { directory: projectDirectory, workspaceID: "ws-kill", project: { directory: projectDirectory } },
+    session: { async context() { return [message] }, async hook() {} },
+    event: { subscribe: (opts) => feedWith("kill-timer-session", projectDirectory, "ws-kill") },
+  }
+  const startedAt = Date.now()
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    const timedOut = await waitFor(async () => {
+      const journal = await store.read("kill-timer-session")
+      return journal.messages.some((item) => item.id === "u1" &&
+        // The attempt is written as inflight before the child runs; only the kill timer can
+        // end it, after which the chunk returns to pending with a backoff delay. A chunk left
+        // inflight forever means the timer is gone.
+        item.chunks.some((chunk) => chunk.attempts >= 1 && chunk.state === "pending" &&
+          chunk.nextAttemptAt > Date.now()))
+    })
+    const elapsed = Date.now() - startedAt
+
+    assert.equal(timedOut, true, "the timed-out chunk was not returned to pending with a backoff delay")
+    assert.ok(spawnCount > 0, "no compact-hook child was spawned")
+    assert.ok(killed > 0, "the hung compact-hook child was never killed by the kill timer")
+    assert.ok(elapsed < 5000, `the hung kin call was not cut off by the kill timer (${elapsed}ms)`)
+    const chunk = (await store.read("kill-timer-session")).messages
+      .find((item) => item.id === "u1").chunks[0]
+    assert.equal(chunk.state, "pending")
+    assert.ok(chunk.nextAttemptAt > Date.now(), "the timed-out chunk has no backoff delay")
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
 })
