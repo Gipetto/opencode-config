@@ -1200,10 +1200,13 @@ test("the stale-journal sweep runs at most once per process", async () => {
   }
 })
 
-test("a journal past the pending-age threshold is abandoned and never retried", async () => {
-  // Regression this catches: an endless backfill that replays week-old chunks. Red if a
-  // journal whose oldest pending chunk is older than abandonAfterMs still receives kin
-  // invocations from the flush path, or if the abandonment transition is not logged.
+test("a pending chunk past the age threshold is abandoned without silencing its journal", async () => {
+  // Regression this catches: an endless backfill that replays week-old chunks, AND the
+  // blast radius the user rejected — a journal-level sticky flag that also silenced
+  // capture of fresh content. Red if the aged chunk is still sent to kin, if its state is
+  // not the terminal "abandoned", if a journal-level flag is consulted (a journal-level
+  // abandonment returns early, so the second flush below performs zero kin for the young
+  // due chunk), or if the transition is not logged.
   const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-age")
   const now = Date.now()
   await seedJournal(store, "abandon-age-session", [{
@@ -1212,6 +1215,13 @@ test("a journal past the pending-age threshold is abandoned and never retried", 
       body: "eight day old backlog", state: "pending", attempts: 3,
       nextAttemptAt: 0, firstSeenAt: now - 8 * DAY_MS,
     }],
+  }, {
+    // A young, due chunk in the SAME journal: per-chunk abandonment must still retry it.
+    key: "abandon-age-2", id: "u-young", source: "fresh due chunk", topic: "abandon age",
+    chunks: [{
+      body: "fresh due chunk", state: "pending", attempts: 0,
+      nextAttemptAt: 0, firstSeenAt: now - 60_000,
+    }],
   }])
 
   const logged = []
@@ -1219,19 +1229,38 @@ test("a journal past the pending-age threshold is abandoned and never retried", 
   console.warn = (...args) => logged.push(args.join(" "))
   try {
     const calls = []
+    // Fails on purpose: a success would take the young chunk to "unknown" in this flush,
+    // leaving the second flush below nothing to attempt. A failure returns it to pending
+    // with a two-second backoff, which now + 1h then clears.
+    const runKin = async (input) => { calls.push(input); return { status: "failure", error: "kin down" } }
     const result = await flushStoredJournal({
       store, sessionID: "abandon-age-session",
       options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256 },
-      runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
-      now,
+      runKin, now,
     })
     const journal = await store.read("abandon-age-session")
 
-    assert.equal(calls.length, 0)
-    assert.equal(result.attempted, 0)
-    assert.equal(journal.abandoned, true)
+    assert.equal(calls.some((input) => input.includes("eight day old backlog")), false,
+      "kin was invoked for a chunk older than abandonAfterMs")
+    assert.equal(journal.messages[0].chunks[0].state, "abandoned",
+      "the aged pending chunk did not transition to the terminal abandoned state")
+    assert.equal(result.attempted, 1,
+      "the aged chunk took the whole flush with it instead of being skipped per chunk")
     assert.ok(logged.some((line) => line.includes("abandon-age-session") && /\b1\b/.test(line)),
       "the abandonment transition emitted no unconditional log naming the journal and count")
+
+    // No journal-level flag: a second flush of the same journal must still perform kin for
+    // the non-abandoned due chunk. A sticky journal flag returns { attempted: 0 } here.
+    // now is pushed past the backoff the first flush's failure path just wrote on it.
+    const second = await flushStoredJournal({
+      store, sessionID: "abandon-age-session",
+      options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256 },
+      runKin, now: now + 3_600_000,
+    })
+    assert.equal(second.attempted, 1,
+      "a journal containing an abandoned chunk stopped retrying its other due chunks")
+    assert.equal(journal.abandoned, undefined,
+      "abandonment was recorded as a journal-level flag instead of per chunk")
   } finally {
     console.warn = oldWarn
   }
@@ -1242,7 +1271,8 @@ test("a legacy journal with no per-chunk firstSeenAt abandons on journal age", a
   // by the previous plugin version never carried that field, so a small legacy backlog
   // (fewer than abandonAfterChunks pending) is replayed on every process start forever.
   // Red if the age fallback to journal.createdAt is removed: with no chunk firstSeenAt,
-  // oldest stays Infinity and the age branch cannot fire.
+  // oldest stays Infinity and the age branch cannot fire, so every legacy pending chunk
+  // stays pending and kin runs for it.
   const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-legacy-age")
   const now = Date.now()
   // createdAt is stamped by hand to reproduce a journal written before the field existed.
@@ -1278,7 +1308,11 @@ test("a legacy journal with no per-chunk firstSeenAt abandons on journal age", a
     assert.equal(compactHookCalls(spawned), 0)
     assert.equal(calls.length, 0)
     assert.equal(result.attempted, 0)
-    assert.equal(journal.abandoned, true)
+    assert.deepEqual(journal.messages.map((item) => item.chunks[0].state),
+      ["abandoned", "abandoned", "abandoned"],
+      "legacy pending chunks were not transitioned to the terminal abandoned state")
+    assert.equal(journal.abandoned, undefined,
+      "abandonment was recorded as a journal-level flag instead of per chunk")
     assert.equal(journal.createdAt, now - 8 * DAY_MS,
       "the creation stamp refreshed on write, so an actively replayed backlog never ages out")
     assert.ok(logged.some((line) => line.includes("abandon-legacy-age-session") && /\b3\b/.test(line)),
@@ -1289,17 +1323,23 @@ test("a legacy journal with no per-chunk firstSeenAt abandons on journal age", a
   }
 })
 
-test("a journal past the pending-count threshold is abandoned and never retried", async () => {
-  // Regression this catches: a 3,020-chunk backlog being replayed at ~25s per chunk with
-  // no user activity. Red if a journal holding more than abandonAfterChunks pending chunks
-  // still receives kin invocations, or if the transition is not logged.
+test("a backlog past the pending-count threshold abandons the oldest excess chunks", async () => {
+  // Regression this catches: a 3,020-chunk backlog being replayed at ~25s per chunk with no
+  // user activity. Red if the oldest excess pending chunks are still sent to kin, if the
+  // newest abandonAfterChunks pending chunks are also abandoned (the user kept the newest
+  // work on purpose), or if the transition is not logged.
+  //
+  // abandonAfterChunks is shrunk to 3 so the fixture stays small; the age branch is
+  // disabled (abandonAfterMs far in the future) so the count branch is the only one that
+  // can fire, which pins this test to criterion 3's count rule.
   const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-count")
   const now = Date.now()
-  await seedJournal(store, "abandon-count-session", Array.from({ length: 300 }, (_, index) => ({
+  await seedJournal(store, "abandon-count-session", Array.from({ length: 6 }, (_, index) => ({
     key: `abandon-count-${index}`, id: `u${index}`, source: `pending body ${index}`, topic: "abandon count",
     chunks: [{
+      // index 0 is the oldest, index 5 the newest.
       body: `pending body ${index}`, state: "pending", attempts: 1,
-      nextAttemptAt: 0, firstSeenAt: now - index,
+      nextAttemptAt: 0, firstSeenAt: now - (6 - index) * DAY_MS,
     }],
   })))
 
@@ -1310,26 +1350,36 @@ test("a journal past the pending-count threshold is abandoned and never retried"
     const calls = []
     const result = await flushStoredJournal({
       store, sessionID: "abandon-count-session",
-      options: { ...options, abandonAfterMs: 7 * DAY_MS, abandonAfterChunks: 256 },
+      options: { ...options, abandonAfterMs: 3650 * DAY_MS, abandonAfterChunks: 3 },
       runKin: async (input) => { calls.push(input); return { status: "success", staged: 1 } },
       now,
     })
     const journal = await store.read("abandon-count-session")
+    const states = journal.messages.map((item) => item.chunks[0].state)
+    const kinBodies = calls.map((input) => input.slice(input.indexOf("\n\n") + 2))
 
-    assert.equal(calls.length, 0)
-    assert.equal(result.attempted, 0)
-    assert.equal(journal.abandoned, true)
-    assert.ok(logged.some((line) => line.includes("abandon-count-session") && /\b300\b/.test(line)),
-      "the abandonment transition emitted no unconditional log naming the journal and count")
+    assert.deepEqual(states.slice(0, 3), ["abandoned", "abandoned", "abandoned"],
+      "the oldest excess pending chunks were not transitioned to the terminal abandoned state")
+    assert.deepEqual(states.slice(3), ["unknown", "unknown", "unknown"],
+      "the newest abandonAfterChunks chunks were abandoned instead of attempted to completion")
+    assert.equal(kinBodies.some((body) => /^pending body [012]$/.test(body)), false,
+      "kin was invoked for an abandoned oldest-excess chunk")
+    assert.equal(result.attempted, 3,
+      "the flush did not proceed with the newest eligible chunks after abandoning the excess")
+    assert.equal(journal.abandoned, undefined,
+      "abandonment was recorded as a journal-level flag instead of per chunk")
+    assert.ok(logged.some((line) => line.includes("abandon-count-session") &&
+      (/abandon/i.test(line) || /\b3\b/.test(line))),
+      "the abandonment batch emitted no unconditional log naming the journal")
   } finally {
     console.warn = oldWarn
   }
 })
 
 test("abandonment never gates the reset of an aged inflight chunk", async () => {
-  // Regression this catches: an abandonment check placed ahead of the inflight reset, so
-  // a crashed chunk stays inflight forever. Red if an abandoned journal leaves the aged
-  // inflight chunk in the inflight state.
+  // Regression this catches: an abandonment check placed ahead of the inflight reset, so a
+  // crashed chunk stays inflight forever. Red if an aged inflight chunk in a journal whose
+  // aged pending sibling is abandoned is left in the inflight state.
   const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-abandon-inflight")
   const now = Date.now()
   await seedJournal(store, "abandon-inflight-session", [{
@@ -1337,6 +1387,14 @@ test("abandonment never gates the reset of an aged inflight chunk", async () => 
     chunks: [{
       body: "chunk orphaned by a crash", state: "inflight", attempts: 2, nextAttemptAt: 0,
       lastAttemptAt: now - 10 * DAY_MS, firstSeenAt: now - 10 * DAY_MS,
+    }],
+  }, {
+    // Aged pending sibling: under per-chunk abandonment this one becomes "abandoned", but
+    // it must not stop the aged inflight chunk above from being reset.
+    key: "abandon-inflight-2", id: "u-aged", source: "aged pending backlog", topic: "abandon inflight",
+    chunks: [{
+      body: "aged pending backlog", state: "pending", attempts: 2, nextAttemptAt: 0,
+      firstSeenAt: now - 10 * DAY_MS,
     }],
   }])
 
@@ -1349,9 +1407,12 @@ test("abandonment never gates the reset of an aged inflight chunk", async () => 
   })
   const journal = await store.read("abandon-inflight-session")
 
-  assert.equal(journal.abandoned, true)
-  assert.equal(journal.messages[0].chunks[0].state, "unknown")
-  assert.equal(calls.length, 0)
+  assert.equal(journal.messages[0].chunks[0].state, "unknown",
+    "an aged inflight chunk was left inflight because abandonment was evaluated first")
+  assert.equal(journal.messages[1].chunks[0].state, "abandoned",
+    "the aged pending sibling was not transitioned to the terminal abandoned state")
+  assert.equal(calls.length, 0,
+    "kin ran for a chunk of this journal instead of the aged pending one being abandoned")
 })
 
 test("unknown chunk bodies are garbage-collected even beside a pending sibling", async () => {
@@ -1381,6 +1442,43 @@ test("unknown chunk bodies are garbage-collected even beside a pending sibling",
   assert.equal(pruned.chunks[0].body, undefined)
   assert.equal(pruned.chunks[1].state, "empty")
   assert.equal(pruned.chunks[1].body, payload)
+})
+
+test("abandoned chunk bodies are garbage-collected even beside a pending sibling", async () => {
+  // Regression this catches: terminal body GC that still only recognises "unknown", so an
+  // abandoned backlog keeps its 4MB bodies forever (criterion 4's amended terminal set).
+  // Red if the abandoned chunk keeps its body, or if the pending sibling loses its body.
+  const store = createJournalStore(process.env.XDG_STATE_HOME, "/repo-body-gc-abandoned")
+  const payload = "body that must be collected from the abandoned chunk"
+  const first = await flushJournal({
+    store, sessionID: "body-gc-abandoned-session", messages: [userMessage("u1", payload)],
+    options, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+  // Hand-set the post-abandonment steady state: one terminal abandoned chunk, one chunk
+  // still pending, in the same message.
+  first.journal.messages[0].chunks[0].state = "abandoned"
+  // Held in backoff so it stays pending across the flush: this test is about body GC not
+  // touching a still-pending chunk, not about whether the sibling is due.
+  first.journal.messages[0].chunks.push({
+    body: payload, state: "pending", attempts: 1, nextAttemptAt: Date.now() + 3_600_000,
+  })
+  await store.write("body-gc-abandoned-session", first.journal)
+
+  const boundary = { id: "c1", type: "compaction", status: "completed", summary: "new window" }
+  await flushJournal({
+    store, sessionID: "body-gc-abandoned-session", messages: [boundary, userMessage("u-new", "after boundary")],
+    options: { ...options, abandonAfterMs: 3650 * DAY_MS, abandonAfterChunks: 256 }, includeRecent: true,
+    runKin: async () => ({ status: "success", exit: 0, durationMs: 10, staged: 1 }),
+  })
+  const pruned = (await store.read("body-gc-abandoned-session")).messages.find((item) => item.id === "u1")
+
+  assert.equal(pruned.chunks[0].state, "abandoned")
+  assert.equal(pruned.chunks[0].body, undefined,
+    "an abandoned chunk kept its body, so an abandoned backlog holds its payloads forever")
+  assert.equal(pruned.chunks[1].state, "pending")
+  assert.equal(pruned.chunks[1].body, payload,
+    "body GC collected the body of a chunk that is still pending")
 })
 
 test("a body-GC batch emits one unconditional log naming the journal and count", async () => {
@@ -1567,6 +1665,58 @@ test("live capture still runs past minCaptureChars and stays closed across a res
     // corrupting that test's spawn count.
     const drained = await waitFor(async () => {
       const j = await store.read("live-capture-session")
+      return !j.messages.some((item) => item.chunks.some((chunk) =>
+        chunk.state === "inflight" || (chunk.state === "pending" && chunk.nextAttemptAt <= Date.now())))
+    })
+    assert.equal(drained, true, "the live-capture flush never settled before the test ended")
+    await cleanup()
+  } finally {
+    delete globalThis.Bun
+  }
+})
+
+test("a journal with abandoned chunks still captures new content past minCaptureChars", async () => {
+  // Regression this catches: abandonment implemented as a journal-level sticky flag. Red if
+  // one stale chunk silences a live session forever — a journal whose backlog was once too
+  // old or too large then captures zero chunks, so real new content past minCaptureChars
+  // never reaches kin. This is the amended criterion 3's central guarantee: abandonment is
+  // per chunk, so the post-abandonment steady state must not gate capture.
+  const projectDirectory = join(root, "abandoned-live-proj")
+  const store = createJournalStore(process.env.XDG_STATE_HOME, projectDirectory)
+  const old = userMessage("u-old", "eight day old backlog chunk")
+  const oldText = serializeMessage(old)
+  const live = "live capture payload after abandonment ".repeat(400)
+  // The post-abandonment steady state: the existing chunk is already terminal "abandoned",
+  // so nothing here is eligible for retry and only the new live content can drive kin.
+  await seedJournal(store, "abandoned-live-session", [{
+    key: messageKey(old, oldText), id: "u-old", source: oldText, topic: "abandoned live",
+    chunks: [{ body: oldText, state: "abandoned", attempts: 5, nextAttemptAt: 0 }],
+  }])
+
+  const spawned = spawnRecorder()
+  const ctx = {
+    options: { ...options, prime: false, dropRecentTurns: 0, minCaptureChars: 6000,
+      chunkTimeoutMs: 5000, compactChunkTimeoutMs: 1000 },
+    location: { directory: projectDirectory, workspaceID: "ws-abandoned-live",
+      project: { directory: projectDirectory } },
+    session: { async context() { return [old, userMessage("u-live", live)] }, async hook() {} },
+    event: { subscribe: (opts) => feedWith("abandoned-live-session", projectDirectory, "ws-abandoned-live") },
+  }
+  try {
+    const cleanup = await (await import("../plugins/kindex-compaction/index.js")).default.setup(ctx)
+    const capturedLive = await waitFor(async () => compactHookCalls(spawned) > 0)
+    assert.equal(capturedLive, true,
+      "a journal holding an abandoned chunk captured nothing for new content past minCaptureChars")
+    const journal = await store.read("abandoned-live-session")
+    assert.ok(journal.messages.some((item) => item.id === "u-live"),
+      "the new live message was never journaled because the journal was treated as abandoned")
+    assert.equal(journal.messages.find((item) => item.id === "u-old").chunks[0].state, "abandoned",
+      "the abandoned chunk was resurrected for retry instead of staying terminal")
+
+    // Drain before leaving: a flush still running after cleanup would spawn into whichever
+    // globalThis.Bun the NEXT test installed, corrupting that test's spawn count.
+    const drained = await waitFor(async () => {
+      const j = await store.read("abandoned-live-session")
       return !j.messages.some((item) => item.chunks.some((chunk) =>
         chunk.state === "inflight" || (chunk.state === "pending" && chunk.nextAttemptAt <= Date.now())))
     })

@@ -228,41 +228,64 @@ const trimEmptyPayloads = (journal) => {
   }
 }
 
+const TERMINAL_BODY_STATES = new Set(["unknown", "abandoned"])
+
 const collectTerminalBodies = (journal, sessionID, boundaryIds) => {
   let collected = 0
   for (const item of journal.messages) {
     if (boundaryIds.has(item.id)) continue
-    const terminal = item.chunks.filter((chunk) => chunk.state === "unknown" && chunk.body !== undefined)
+    const terminal = item.chunks.filter((chunk) => TERMINAL_BODY_STATES.has(chunk.state) && chunk.body !== undefined)
     if (!terminal.length) continue
     collected += terminal.length
     for (const chunk of terminal) delete chunk.body
-    if (item.chunks.every((chunk) => chunk.state === "unknown")) delete item.source
+    if (item.chunks.every((chunk) => TERMINAL_BODY_STATES.has(chunk.state))) delete item.source
   }
   if (collected) console.warn(`[kindex] journal ${sessionID} garbage-collected ${collected} chunk body(s)`)
   return collected
 }
 
-const abandonJournal = (journal, sessionID, options, now) => {
-  if (journal.abandoned) return true
+// Abandonment is per chunk, never per journal: a stale backlog must not silence capture of
+// new content. Only pending chunks are eligible — inflight, unknown, empty and abandoned
+// ones are left exactly as they are.
+const abandonChunks = (journal, sessionID, options, now) => {
   const pending = []
-  let oldest = Infinity
   for (const item of journal.messages) {
     for (const chunk of item.chunks) {
-      if (chunk.state !== "pending" && chunk.state !== "inflight") continue
-      pending.push(chunk)
-      if (chunk.firstSeenAt) oldest = Math.min(oldest, chunk.firstSeenAt)
+      if (chunk.state === "pending") pending.push(chunk)
     }
   }
+  if (!pending.length) return 0
   // Legacy journals predate chunk.firstSeenAt; fall back to the journal creation stamp.
   // lastAttemptAt and file mtime are refreshed by every retry, so they can't be used here.
-  if (oldest === Infinity && journal.createdAt) oldest = journal.createdAt
-  if (!pending.length) return false
-  const countLimit = options.abandonAfterChunks ?? DEFAULTS.abandonAfterChunks
+  const hasSeen = pending.some((chunk) => chunk.firstSeenAt)
   const ageLimit = options.abandonAfterMs ?? DEFAULTS.abandonAfterMs
-  if (pending.length <= countLimit && (oldest === Infinity || now - oldest <= ageLimit)) return false
-  journal.abandoned = true
-  console.warn(`[kindex] journal ${sessionID} abandoned with ${pending.length} pending chunk(s)`)
-  return true
+  const cutoff = now - ageLimit
+  let abandoned = 0
+  const eligible = []
+  for (const chunk of pending) {
+    const born = hasSeen ? chunk.firstSeenAt : journal.createdAt
+    if (born && born < cutoff) {
+      chunk.state = "abandoned"
+      abandoned++
+    } else {
+      eligible.push(chunk)
+    }
+  }
+  const countLimit = options.abandonAfterChunks ?? DEFAULTS.abandonAfterChunks
+  const excess = eligible.length - countLimit
+  if (excess > 0) {
+    // Keep the newest countLimit pending chunks eligible, drop the oldest excess.
+    // Array#sort is stable, so same-age chunks keep journal order.
+    const byAge = hasSeen
+      ? eligible.slice().sort((a, b) => (a.firstSeenAt ?? 0) - (b.firstSeenAt ?? 0))
+      : eligible.slice()
+    for (const chunk of byAge.slice(0, excess)) {
+      chunk.state = "abandoned"
+      abandoned++
+    }
+  }
+  if (abandoned) console.warn(`[kindex] journal ${sessionID} abandoned ${abandoned} pending chunk(s)`)
+  return abandoned
 }
 
 const resetAgedInflight = (journal, options, now) => {
@@ -293,7 +316,9 @@ export const purgeJournal = async ({ store, sessionID, options, now = Date.now()
 
 export const flushJournal = async ({ store, sessionID, messages, options, runKin, includeRecent = false, now = Date.now() }) => {
   const journal = await store.read(sessionID)
-  resetAgedInflight(journal, options, now)
+  const reset = resetAgedInflight(journal, options, now)
+  const abandoned = abandonChunks(journal, sessionID, options, now)
+  if (reset || abandoned) await store.write(sessionID, journal)
   const existing = new Set(journal.messages.map((item) => item.key))
   const source = latestBoundary(messages)
   const boundaryIds = new Set(source.map((message) => message.id))
@@ -314,10 +339,6 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
   }
 
   await store.write(sessionID, journal)
-  if (abandonJournal(journal, sessionID, options, now)) {
-    await store.write(sessionID, journal)
-    return { attempted: 0, failed: false, journal }
-  }
   const limit = includeRecent ? options.maxFlushChunks : options.maxChunks
   const chunkTimeoutMs = includeRecent
     ? options.compactChunkTimeoutMs ?? options.chunkTimeoutMs
@@ -354,12 +375,9 @@ export const flushJournal = async ({ store, sessionID, messages, options, runKin
 export const flushStoredJournal = async ({ store, sessionID, options, runKin, now = Date.now() }) => {
   const journal = await store.read(sessionID)
   if (!journal) return { attempted: 0, failed: false }
-  const abandoned = abandonJournal(journal, sessionID, options, now)
-  resetAgedInflight(journal, options, now)
-  if (abandoned) {
-    await store.write(sessionID, journal)
-    return { attempted: 0, failed: false }
-  }
+  const reset = resetAgedInflight(journal, options, now)
+  const abandoned = abandonChunks(journal, sessionID, options, now)
+  if (reset || abandoned) await store.write(sessionID, journal)
   let attempted = 0
   for (const item of journal.messages) {
     for (const chunk of item.chunks) {
