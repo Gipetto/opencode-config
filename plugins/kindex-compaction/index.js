@@ -65,10 +65,6 @@ export const chunkText = (text, size, maxChunks = Infinity) => {
 
 const emptyJournal = () => ({ version: 1, messages: [] })
 
-const pendingChunks = (journal) =>
-  journal.messages.reduce((total, item) => total + item.chunks.filter((chunk) => chunk.state === "pending").length, 0)
-
-
 // Journals written by this process never need the startup sweep; only files
 // left behind by earlier processes do, and they are all written through here.
 const liveSessions = new Set()
@@ -306,9 +302,9 @@ export const purgeJournal = async ({ store, sessionID, options, now = Date.now()
   const task = async () => {
     const journal = await store.read(sessionID)
     const reset = resetAgedInflight(journal, options, now)
-    const dropped = pendingChunks(journal)
+    const dropped = journal.messages.reduce((total, item) => total + item.chunks.length, 0)
     await store.remove(sessionID)
-    console.warn(`[kindex] journal ${sessionID} dropped with ${dropped} pending chunk(s)`)
+    console.warn(`[kindex] journal ${sessionID} dropped with ${dropped} chunk(s)`)
     return { reset, dropped }
   }
   return enqueue ? enqueue(sessionID, task) : task()
