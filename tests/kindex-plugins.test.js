@@ -1049,6 +1049,19 @@ const waitFor = async (predicate, attempts = 200, delayMs = 5) => {
   return false
 }
 
+// A test that performs real capture must not leave a flush running: the spawn seam is the
+// shared globalThis.Bun, which the next test replaces, so a late spawn lands in that test's
+// recorder and corrupts its count. Settled means no chunk is inflight and none is due; the
+// terminal states (unknown, empty, abandoned) count as settled.
+const waitForDrain = async (store, sessionID, label) => {
+  const drained = await waitFor(async () => {
+    const journal = await store.read(sessionID)
+    return !journal.messages.some((item) => item.chunks.some((chunk) =>
+      chunk.state === "inflight" || (chunk.state === "pending" && chunk.nextAttemptAt <= Date.now())))
+  })
+  assert.equal(drained, true, `${label} never settled before the test ended`)
+}
+
 const DAY_MS = 24 * 3600 * 1000
 
 test("idle gate ignores a pending backlog and stays closed across a fresh store instance", async () => {
@@ -1368,9 +1381,8 @@ test("a backlog past the pending-count threshold abandons the oldest excess chun
       "the flush did not proceed with the newest eligible chunks after abandoning the excess")
     assert.equal(journal.abandoned, undefined,
       "abandonment was recorded as a journal-level flag instead of per chunk")
-    assert.ok(logged.some((line) => line.includes("abandon-count-session") &&
-      (/abandon/i.test(line) || /\b3\b/.test(line))),
-      "the abandonment batch emitted no unconditional log naming the journal")
+    assert.ok(logged.some((line) => line.includes("abandon-count-session") && /\b3\b/.test(line)),
+      "the abandonment batch emitted no unconditional log naming the journal and count")
   } finally {
     console.warn = oldWarn
   }
@@ -1655,15 +1667,8 @@ test("live capture still runs past minCaptureChars and stays closed across a res
     const journal = await store.read("live-capture-session")
     assert.ok(journal.messages.some((item) => item.id === "u-live"))
 
-    // Drain before leaving: this test now performs real capture, and a flush still running
-    // after cleanup would spawn into whichever globalThis.Bun the NEXT test installed,
-    // corrupting that test's spawn count.
-    const drained = await waitFor(async () => {
-      const j = await store.read("live-capture-session")
-      return !j.messages.some((item) => item.chunks.some((chunk) =>
-        chunk.state === "inflight" || (chunk.state === "pending" && chunk.nextAttemptAt <= Date.now())))
-    })
-    assert.equal(drained, true, "the live-capture flush never settled before the test ended")
+    // This test performs real capture, so its flush has to settle before cleanup.
+    await waitForDrain(store, "live-capture-session", "the live-capture flush")
     await cleanup()
   } finally {
     delete globalThis.Bun
@@ -1708,14 +1713,8 @@ test("a journal with abandoned chunks still captures new content past minCapture
     assert.equal(journal.messages.find((item) => item.id === "u-old").chunks[0].state, "abandoned",
       "the abandoned chunk was resurrected for retry instead of staying terminal")
 
-    // Drain before leaving: a flush still running after cleanup would spawn into whichever
-    // globalThis.Bun the NEXT test installed, corrupting that test's spawn count.
-    const drained = await waitFor(async () => {
-      const j = await store.read("abandoned-live-session")
-      return !j.messages.some((item) => item.chunks.some((chunk) =>
-        chunk.state === "inflight" || (chunk.state === "pending" && chunk.nextAttemptAt <= Date.now())))
-    })
-    assert.equal(drained, true, "the live-capture flush never settled before the test ended")
+    // Capture ran here too, so this flush also has to settle before cleanup.
+    await waitForDrain(store, "abandoned-live-session", "the post-abandonment capture flush")
     await cleanup()
   } finally {
     delete globalThis.Bun
