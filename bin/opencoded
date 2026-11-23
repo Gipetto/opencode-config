@@ -23,4 +23,6 @@ if [ -z "${OPENCODE_SERVER_PASSWORD}" ]; then
 fi
 export OPENCODE_SERVER_PASSWORD
 
+export OPENCODE_CONFIG="$REPO/opencode.profile.local.json"
+
 exec opencode serve --hostname 0.0.0.0 --port 4096
