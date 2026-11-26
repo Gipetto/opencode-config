@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# managed by opencode-config, run with `PROFILE=<name> make render`
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROFILE="${PROFILE:-single}"
+SRC="$REPO/profiles.yaml"
+OUT="$REPO/opencode.profile.local.json"
+
+for tool in yq jq; do
+  command -v "$tool" >/dev/null || { echo "render-profile: $tool not found on PATH" >&2; exit 1; }
+done
+
+profile="$(yq -c --arg p "$PROFILE" '.profiles[$p] // empty' "$SRC")"
+if [ -z "$profile" ]; then
+  echo "render-profile: unknown profile '$PROFILE' (have: $(yq -r '.profiles | keys | join(", ")' "$SRC"))" >&2
+  exit 1
+fi
+
+status=0
+while read -r agent ref; do
+  if [ ! -f "$REPO/agents/$agent.md" ]; then
+    echo "render-profile: $PROFILE: no agents/$agent.md" >&2
+    status=1
+  fi
+  provider="${ref%%/*}"
+  rest="${ref#*/}"
+  model="${rest%%#*}"
+  variant=""
+  [[ "$rest" == *"#"* ]] && variant="${rest#*#}"
+  if ! jq -e --arg p "$provider" --arg m "$model" --arg v "$variant" '
+      .providers[$p].models[$m] as $def
+      | $def != null and ($v == "" or any($def.variants[]?; .id == $v))' "$REPO/opencode.json" >/dev/null; then
+    echo "render-profile: $PROFILE: $agent -> $ref is not defined in opencode.json providers" >&2
+    status=1
+  fi
+done < <(jq -r '.agents // {} | to_entries[] | "\(.key) \(.value)"' <<<"$profile")
+[ "$status" -eq 0 ] || exit 1
+
+rendered="$(jq '{"$schema": "https://opencode.ai/config.json", agents: (.agents // {} | map_values({model: .}))}' <<<"$profile")"
+printf '%s\n' "$rendered" > "$OUT"
+echo "rendered profile '$PROFILE' -> $OUT"

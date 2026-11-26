@@ -21,6 +21,12 @@ the same model: `omlx/Qwen3.8-Flash-Next-oQ4e-mtp`. `default_agent` is
 `orchestrator` and `subagent_depth` is 1, so subagents do not spawn further
 subagents.
 
+`profiles.yaml` maps agents to models per profile. `PROFILE=split make render`
+writes the gitignored `opencode.profile.local.json` and reloads the server;
+`bin/opencoded` points `OPENCODE_CONFIG` at that file. Its entries override
+the `model:` line in each agent's frontmatter. Without the file, the
+frontmatter models apply, which match the `single` profile.
+
 ## Agent roster
 
 | Agent | Mode | Role | Steps | Permission posture |

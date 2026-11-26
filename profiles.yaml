@@ -1,0 +1,30 @@
+# Model profiles. Render one with `PROFILE=<name> make render`.
+# Each entry maps an agent (agents/<name>.md) to a provider/model[#variant]
+# defined under "providers" in opencode.json.
+
+profiles:
+  single:
+    agents:
+      orchestrator: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#lead
+      plan: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#think
+      critic: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#think
+      review: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#think
+      refute: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#gate
+      proportionality: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#gate
+      implement: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#fast
+      test: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#fast
+      explore: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#fast
+      verify: omlx/Qwen3.8-Flash-Next-oQ4e-mtp#fast
+
+  split:
+    agents:
+      orchestrator: omlx/Qwen3.8-27B-MLX-6bit#think
+      plan: omlx/Qwen3.8-27B-MLX-6bit#think
+      critic: omlx/Qwen3.8-27B-MLX-6bit#think
+      review: omlx/Qwen3.8-27B-MLX-6bit#think
+      refute: omlx/Qwen3.8-27B-MLX-6bit#think
+      proportionality: omlx/Qwen3.8-27B-MLX-6bit#think
+      verify: omlx/Qwen3.8-27B-MLX-6bit#fast
+      implement: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#fast
+      test: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#fast
+      explore: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#fast
