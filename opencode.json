@@ -398,6 +398,31 @@
             "reasoningField": "reasoning_content",
             "requireReasoning": false
           }
+        },
+        "mlx-community/Inkling-2-Mini-oQ4e-mtp": {
+          "name": "Inkling 2 Mini oQ4e MTP (omlx)",
+          "limit": {
+            "context": 160000,
+            "output": 16384
+          },
+          "variants": [
+            {
+              "id": "fast",
+              "body": {
+                "reasoning_effort": "off"
+              }
+            },
+            {
+              "id": "think",
+              "body": {
+                "reasoning_effort": "high"
+              }
+            }
+          ],
+          "compatibility": {
+            "reasoningField": "reasoning_content",
+            "requireReasoning": false
+          }
         }
       }
     }

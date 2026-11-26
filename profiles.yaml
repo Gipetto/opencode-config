@@ -24,7 +24,7 @@ profiles:
       test: omlx/Qwen3.8-27B-MLX-6bit
       explore: omlx/Qwen3.8-27B-MLX-6bit
       verify: omlx/Qwen3.8-27B-MLX-6bit
-      critic: omlx/INKLINK-MINI-TBD
-      review: omlx/INKLINK-MINI-TBD
-      refute: omlx/INKLINK-MINI-TBD
-      proportionality: omlx/INKLINK-MINI-TBD
+      critic: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
+      review: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
+      refute: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
+      proportionality: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
