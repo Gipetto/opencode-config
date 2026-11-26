@@ -5,7 +5,10 @@
     "keep": {
       "tokens": 8192
     },
-    "buffer": 6000
+    "buffer": 30000
+  },
+  "tool_output": {
+    "max_bytes": 32768
   },
   "lsp": true,
   "mcp": {
@@ -414,6 +417,9 @@
   "model": "omlx/Qwen3.8-Flash-Next-oQ4e-mtp",
   "default_agent": "orchestrator",
   "agents": {
+    "compaction": {
+      "model": "omlx/Qwen3.8-Flash-Next-oQ4e-mtp#fast"
+    },
     "build": {
       "permissions": [
         {
