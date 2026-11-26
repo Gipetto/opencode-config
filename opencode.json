@@ -432,7 +432,10 @@
             {
               "id": "fast",
               "body": {
-                "reasoning_effort": "off"
+                "thinking_budget": 2048,
+                "chat_template_kwargs": {
+                  "reasoning_effort": 0.2
+                }
               }
             },
             {
