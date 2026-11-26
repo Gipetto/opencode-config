@@ -18,13 +18,13 @@ profiles:
 
   split:
     agents:
-      orchestrator: omlx/Qwen3.8-27B-MLX-6bit
-      plan: omlx/Qwen3.8-27B-MLX-6bit
-      implement: omlx/Qwen3.8-27B-MLX-6bit
-      test: omlx/Qwen3.8-27B-MLX-6bit
-      explore: omlx/Qwen3.8-27B-MLX-6bit
-      verify: omlx/Qwen3.8-27B-MLX-6bit
-      critic: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
-      review: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
-      refute: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
-      proportionality: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#think
+      orchestrator: omlx/Qwen3.8-27B-MLX-6bit#think
+      plan: omlx/Qwen3.8-27B-MLX-6bit#think
+      critic: omlx/Qwen3.8-27B-MLX-6bit#think
+      review: omlx/Qwen3.8-27B-MLX-6bit#think
+      refute: omlx/Qwen3.8-27B-MLX-6bit#think
+      proportionality: omlx/Qwen3.8-27B-MLX-6bit#think
+      verify: omlx/Qwen3.8-27B-MLX-6bit#fast
+      implement: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#fast
+      test: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#fast
+      explore: omlx/mlx-community/Inkling-2-Mini-oQ4e-mtp#fast

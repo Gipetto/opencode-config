@@ -307,7 +307,30 @@
           "name": "Qwen 3.8 27B Q6 (omlx)",
           "limit": {
             "context": 150000,
-            "output": 4096
+            "output": 16384
+          },
+          "variants": [
+            {
+              "id": "fast",
+              "body": {
+                "chat_template_kwargs": {
+                  "enable_thinking": false
+                }
+              }
+            },
+            {
+              "id": "think",
+              "body": {
+                "chat_template_kwargs": {
+                  "reasoning_effort": "medium",
+                  "thinking_budget": 8192
+                }
+              }
+            }
+          ],
+          "compatibility": {
+            "reasoningField": "reasoning_content",
+            "requireReasoning": false
           }
         },
         "Qwen3.8-27B-MLX-6bit-32k": {
