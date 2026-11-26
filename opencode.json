@@ -441,7 +441,10 @@
             {
               "id": "think",
               "body": {
-                "reasoning_effort": "high"
+                "thinking_budget": 8192,
+                "chat_template_kwargs": {
+                  "reasoning_effort": 0.9
+                }
               }
             }
           ],
