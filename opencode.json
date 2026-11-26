@@ -325,24 +325,24 @@
             "output": 4096
           }
         },
-        "Qwen3.6-35B-A3B-MLX-mixed-4bit": {
-          "name": "Qwen 3.6 35B A3B MoE (omlx)",
+        "Qwen3.6-35B-A3B-oQ4e-mtp": {
+          "name": "Qwen 3.6 35B A3B MoE MTP (omlx)",
           "limit": {
             "context": 150000,
             "output": 4096
           }
         },
-        "Qwen3.6-35B-A3B-MLX-mixed-4bit-32k": {
-          "name": "Qwen 3.6 35B A3B MoE 32k context (omlx)",
-          "modelID": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
+        "Qwen3.6-35B-A3B-oQ4e-mtp-32k": {
+          "name": "Qwen 3.6 35B A3B MoE MTP 32k context (omlx)",
+          "modelID": "Qwen3.6-35B-A3B-oQ4e-mtp",
           "limit": {
             "context": 32000,
             "output": 4096
           }
         },
-        "Qwen3.6-35B-A3B-MLX-mixed-4bit-64k": {
-          "name": "Qwen 3.6 35B A3B MoE 64k context (omlx)",
-          "modelID": "Qwen3.6-35B-A3B-MLX-mixed-4bit",
+        "Qwen3.6-35B-A3B-oQ4e-mtp-64k": {
+          "name": "Qwen 3.6 35B A3B MoE MTP 64k context (omlx)",
+          "modelID": "Qwen3.6-35B-A3B-oQ4e-mtp",
           "limit": {
             "context": 64000,
             "output": 4096
