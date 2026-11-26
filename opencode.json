@@ -5,7 +5,7 @@
     "keep": {
       "tokens": 8192
     },
-    "buffer": 30000
+    "buffer": 20000
   },
   "tool_output": {
     "max_bytes": 32768
@@ -351,7 +351,7 @@
         "Qwen3.8-Flash-Next-oQ4e-mtp": {
           "name": "Qwen3.8 Flash Next oQ4e MTP (omlx)",
           "limit": {
-            "context": 150000,
+            "context": 160000,
             "output": 16384
           },
           "variants": [
